@@ -1,0 +1,24 @@
+﻿<?xml version = "1.0" encoding = "UTF-8" ?>
+<Application xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:local="clr-namespace:DViewer"
+             x:Class="DViewer.App">
+    <Application.Resources>
+        <ResourceDictionary>
+
+            <!--<OnPlatform x:Key="MDL2" x:TypeArguments="x:String">
+                <On Platform="WinUI" Value="Segoe MDL2 Assets" />
+                <On Platform="Android,iOS,MacCatalyst" Value="" />
+            </OnPlatform>-->
+            <local:FormatDateDisplayConverter x:Key="FormatDateDisplayConverter" />
+            <local:FormatTimeDisplayConverter x:Key="FormatTimeDisplayConverter" />
+            <local:NullableDateConverter x:Key="NullableDateConverter" />
+                <local:NullableTimeConverter x:Key="NullableTimeConverter" />
+            <ResourceDictionary.MergedDictionaries>
+
+                <ResourceDictionary Source="Resources/Styles/Colors.xaml" />
+                <ResourceDictionary Source="Resources/Styles/Styles.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

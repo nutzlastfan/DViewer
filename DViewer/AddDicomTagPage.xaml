@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="DViewer.AddDicomTagPage"
+             Title="DICOM-Tag hinzufügen"
+             Padding="16">
+
+    <Grid RowDefinitions="Auto,*,Auto" RowSpacing="12">
+
+        <!-- Filter -->
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+            <Entry Placeholder="Tag, Name oder VR filtern..."
+                   Text="{Binding Filter, Mode=TwoWay}" />
+            <Button Grid.Column="1" Text="Schließen" Clicked="OnCloseClicked" />
+        </Grid>
+
+        <!-- Kandidaten -->
+        <CollectionView Grid.Row="1"
+                        ItemsSource="{Binding Filtered}"
+                        SelectionMode="Single"
+                        SelectedItem="{Binding Selected, Mode=TwoWay}">
+            <CollectionView.ItemsLayout>
+                <LinearItemsLayout Orientation="Vertical" ItemSpacing="2" />
+            </CollectionView.ItemsLayout>
+            <CollectionView.ItemTemplate>
+                <DataTemplate>
+                    <Grid Padding="8" ColumnDefinitions="Auto,*,Auto" BackgroundColor="#eee">
+                        <Label Grid.Column="0" Text="{Binding TagId}" TextColor="Black" Margin="0,0,12,0" />
+                        <Label Grid.Column="1" Text="{Binding Name}"  TextColor="Black" />
+                        <Label Grid.Column="2" Text="{Binding Vr}"    TextColor="Black" FontAttributes="Bold" />
+                    </Grid>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+
+        <!-- Eingabe + Buttons -->
+        <VerticalStackLayout Grid.Row="2" Spacing="8">
+
+            <!-- AUSGEWÄHLTER TAG (unten) -->
+            <Border Stroke="#CCCCCC"
+                    BackgroundColor="#F5F5F5"
+                    Padding="8">
+                <Border.Triggers>
+                    <!-- ausblenden, wenn nichts ausgewählt -->
+                    <DataTrigger TargetType="Border" Binding="{Binding Selected}" Value="{x:Null}">
+                        <Setter Property="IsVisible" Value="False" />
+                    </DataTrigger>
+                </Border.Triggers>
+                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                    <Label Grid.Column="0"
+                           Text="{Binding Selected.TagId}"
+                           TextColor="Black"
+                           FontAttributes="Bold" />
+                    <Label Grid.Column="1"
+                           Text="{Binding Selected.Name}"
+                           TextColor="Black" />
+                    <Label Grid.Column="2"
+                           Text="{Binding Selected.Vr, StringFormat='[{0}]'}"
+                           TextColor="Black" />
+                </Grid>
+            </Border>
+
+            <!-- VR-Hinweis -->
+            <Label Text="{Binding VrHint}" TextColor="White" FontSize="12" />
+
+            <!-- Wert -->
+            <Entry Placeholder="Wert eingeben…"
+                   Text="{Binding Value, Mode=TwoWay}"
+                   TextColor="Black" />
+
+            <!-- Aktionen -->
+            <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="8">
+                <Button Text="Links"  Clicked="OnLeftClicked" />
+                <Button Grid.Column="1" Text="Rechts" Clicked="OnRightClicked" />
+                <Button Grid.Column="2" Text="Beide"  Clicked="OnBothClicked" />
+                <Button Grid.Column="3" Text="Verwerfen" Clicked="OnCloseClicked" />
+            </Grid>
+        </VerticalStackLayout>
+    </Grid>
+</ContentPage>

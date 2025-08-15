@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    x:Class="DViewer.FullscreenImagePage"
+    BackgroundColor="Black">
+
+    <Grid x:Name="Root" BackgroundColor="Black">
+        <!-- Bild -->
+        <Image x:Name="Img" Aspect="AspectFit" HorizontalOptions="Center" VerticalOptions="Center" />
+
+        <!-- Gesten: 1x Tippen = schließen, 2x = reset Zoom, Pinch & Pan -->
+        <Grid.GestureRecognizers>
+            <TapGestureRecognizer NumberOfTapsRequired="1" Tapped="OnCloseTapped" />
+            <TapGestureRecognizer NumberOfTapsRequired="2" Tapped="OnDoubleTapped" />
+            <PinchGestureRecognizer PinchUpdated="OnPinchUpdated" />
+            <PanGestureRecognizer PanUpdated="OnPanUpdated" />
+        </Grid.GestureRecognizers>
+    </Grid>
+</ContentPage>
