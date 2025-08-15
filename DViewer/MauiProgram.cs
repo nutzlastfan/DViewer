@@ -23,7 +23,7 @@ namespace DViewer
     		builder.Logging.AddDebug();
 #endif
 
-            builder.Services.AddSingleton<IDicomLoader, DicomLoader>();
+            //builder.Services.AddSingleton<IDicomLoader, DicomLoader>();
 
 
 #if WINDOWS

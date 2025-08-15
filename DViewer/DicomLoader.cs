@@ -1,215 +1,176 @@
-﻿using FellowOakDicom.Imaging;
-using FellowOakDicom;
-using SixLabors.ImageSharp.PixelFormats;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using FellowOakDicom;
+using FellowOakDicom.Imaging;
+
+
+// ImageSharp
 using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Png;
+using Image = SixLabors.ImageSharp.Image;
 
 namespace DViewer
 {
-    public interface IDicomLoader
+    public class DicomLoader
     {
-        System.Threading.Tasks.Task<DicomFileViewModel> LoadAsync(string path);
-    }
-
-
-
-    public class DicomLoader : IDicomLoader
-    {
-        public async System.Threading.Tasks.Task<DicomFileViewModel> LoadAsync(string path)
+        // Große/Binär-Tags weglassen
+        private static readonly HashSet<DicomTag> SkipTags = new()
         {
-            var dicomFile = await DicomFile.OpenAsync(path, FileReadOption.ReadAll);
-            dicomFile = HelperFunctions.EnsureUncompressed(dicomFile);
-            var dataset = dicomFile.Dataset;
+            DicomTag.PixelData,
+            DicomTag.WaveformData,
+            DicomTag.EncapsulatedDocument
+        };
 
-            var metadataList = new List<DicomMetadataItem>();
-            var binaryVrToSkip = new[] { DicomVR.OB, DicomVR.OW, DicomVR.OF, DicomVR.UN, DicomVR.UT };
+        private static bool IsOverlayData(DicomItem it) =>
+            it.Tag.Group >= 0x6000 && it.Tag.Group <= 0x60FF && it.Tag.Element == 0x3000;
 
-            foreach (var item in dataset)
+        private static string ReadValueSafe(DicomItem item)
+        {
+            try
             {
+                if (item.ValueRepresentation == DicomVR.SQ) return "[Sequence]";
+                if (SkipTags.Contains(item.Tag) || IsOverlayData(item)) return "[Binary]";
+
+                if (item is DicomElement el)
+                {
+                    int count = el.Count;
+                    if (count <= 0) return string.Empty;
+
+                    int take = Math.Min(count, 16);
+                    var vals = new string[take];
+                    for (int i = 0; i < take; i++)
+                    {
+                        try { vals[i] = el.Get<string>(i) ?? string.Empty; }
+                        catch { vals[i] = string.Empty; }
+                    }
+                    if (count > take) vals[take - 1] += $" …(+{count - take})";
+                    return string.Join("\\", vals);
+                }
+
+                return "[Unsupported]";
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        }
+
+        public async Task<DicomFileViewModel?> PickAndLoadAsync(CancellationToken ct = default)
+        {
+            try
+            {
+                var pick = await Microsoft.Maui.Storage.FilePicker.Default.PickAsync(
+                    new Microsoft.Maui.Storage.PickOptions { PickerTitle = "DICOM-Datei auswählen" });
+                if (pick == null) return null;
+
+                var path = pick.FullPath ?? pick.FileName;
+                return await LoadAsync(path, ct).ConfigureAwait(false);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        public async Task<DicomFileViewModel> LoadAsync(string path, CancellationToken ct = default)
+        {
+            return await Task.Run(() =>
+            {
+                ct.ThrowIfCancellationRequested();
+
+                var vm = new DicomFileViewModel
+                {
+                    FileName = System.IO.Path.GetFileName(path),
+                    Image = null
+                };
+
+                var list = new List<DicomMetadataItem>();
+
                 try
                 {
-                    if (item is DicomSequence seq)
-                    {
-                        var entry = DicomDictionary.Default[seq.Tag];
-                        string name = entry?.Name ?? seq.Tag.ToString();
-                        string tagId = seq.Tag.ToString();
-                        string vr = seq.ValueRepresentation.Code;
-                        string val = $"Sequence ({seq.Items.Count} items)";
+                    var dicom = DicomFile.Open(path);
+                    var ds = dicom.Dataset;
 
-                        metadataList.Add(new DicomMetadataItem
+                    foreach (var item in ds)
+                    {
+                        ct.ThrowIfCancellationRequested();
+
+                        try
                         {
-                            TagId = tagId,
-                            Name = name,
-                            Vr = vr,
-                            Value = val
-                        });
+                            var tag = item.Tag;
+                            var name = tag.DictionaryEntry?.Name ?? string.Empty;
+                            var vr = item.ValueRepresentation?.Code ?? item.ValueRepresentation?.ToString() ?? string.Empty;
+                            var val = ReadValueSafe(item);
+
+                            list.Add(new DicomMetadataItem
+                            {
+                                TagId = tag.ToString(), // "(gggg,eeee)"
+                                Name = name,
+                                Vr = vr,
+                                Value = val
+                            });
+                        }
+                        catch
+                        {
+                            // einzelnes Element überspringen
+                        }
                     }
-                    else if (item is DicomElement element)
+
+                    vm.SetMetadata(list);
+
+                    // Preview optional & best effort (blockiert nicht das Lesen der Metadaten)
+                    try
                     {
-                        var entry = DicomDictionary.Default[element.Tag];
-                        string name = entry?.Name ?? element.Tag.ToString();
-                        string tagId = element.Tag.ToString();
-                        string vr = element.ValueRepresentation.Code;
-                        string val;
+                        if (ds.Contains(DicomTag.PixelData))
+                        {
+                            var di = new DicomImage(ds);
+                            var rendered = di.RenderImage(); // IImage
 
-                        if (element.Tag == DicomTag.PixelData)
-                        {
-                            val = "<Pixel Data>";
-                        }
-                        else if (binaryVrToSkip.Contains(element.ValueRepresentation))
-                        {
-                            val = $"<{element.ValueRepresentation.Code} data>";
-                        }
-                        else
-                        {
-                            try
+                            // *** ImageSharp aus dem Render-Result ziehen ***
+                            Image? sharp = null;
+
+                            // 1) Bevorzugt: AsSharpImage() (Erweiterungsmethode aus FellowOakDicom.Imaging.ImageSharp)
+                            var asSharp = rendered.GetType().GetMethod("AsSharpImage", Type.EmptyTypes);
+                            if (asSharp != null)
                             {
-                                if (element.Count > 1)
-                                {
-                                    var values = dataset.GetValues<string>(element.Tag);
-                                    val = (values != null && values.Length > 0) ? string.Join("\\", values) : string.Empty;
-                                }
-                                else
-                                {
-                                    val = dataset.GetSingleValueOrDefault<string>(element.Tag, string.Empty);
-                                }
+                                sharp = asSharp.Invoke(rendered, null) as Image;
                             }
-                            catch
+
+                            // 2) Fallback: öffentliche Property "Image" (manche Builds besitzen die)
+                            if (sharp == null)
                             {
-                                val = "<unreadable value>";
+                                var prop = rendered.GetType().GetProperty("Image");
+                                if (prop?.GetValue(rendered) is Image imgProp)
+                                    sharp = imgProp;
+                            }
+
+                            if (sharp != null)
+                            {
+                                // Als PNG in Memory -> MAUI ImageSource
+                                using var ms = new MemoryStream();
+                                sharp.Save(ms, new PngEncoder());
+                                var bytes = ms.ToArray();
+
+                                vm.Image = ImageSource.FromStream(() => new MemoryStream(bytes));
+                            }
+                            else
+                            {
+                                // Keine kompatible Ausgabe -> Vorschau leer lassen (kein Crash)
+                                vm.Image = null;
                             }
                         }
-
-                        if (string.IsNullOrWhiteSpace(val))
-                            continue;
-
-                        metadataList.Add(new DicomMetadataItem
-                        {
-                            TagId = tagId,
-                            Name = name,
-                            Vr = vr,
-                            Value = val
-                        });
+                    }
+                    catch
+                    {
+                        vm.Image = null; // Vorschau ist optional
                     }
                 }
                 catch
                 {
-                    // einzelnes Tag überspringen
+                    vm.SetMetadata(new List<DicomMetadataItem>());
+                    vm.Image = null;
                 }
-            }
 
-            // Pixeldata
-            var pixelData = DicomPixelData.Create(dataset);
-            var frame = pixelData.GetFrame(0);
-            byte[] rawBytes = frame.Data;
-
-            bool isSigned = pixelData.PixelRepresentation == PixelRepresentation.Signed;
-            int bitsAllocated = pixelData.BitsAllocated;
-            int width = pixelData.Width;
-            int height = pixelData.Height;
-
-            var dicomImage = new DicomImage(dataset);
-            double windowCenter = dicomImage.WindowCenter;
-            double windowWidth = dicomImage.WindowWidth;
-
-            var photo = dataset.GetSingleValueOrDefault(DicomTag.PhotometricInterpretation, "MONOCHROME2");
-            bool invert = photo == "MONOCHROME1";
-
-            byte[] pixels8 = new byte[width * height];
-
-            if (bitsAllocated == 16)
-            {
-                for (int i = 0; i < width * height; i++)
-                {
-                    int offset = i * 2;
-                    int rawValue = isSigned
-                        ? BitConverter.ToInt16(rawBytes, offset)
-                        : BitConverter.ToUInt16(rawBytes, offset);
-
-                    double lower = windowCenter - 0.5 - (windowWidth - 1) / 2.0;
-                    double upper = windowCenter - 0.5 + (windowWidth - 1) / 2.0;
-                    double display;
-                    if (rawValue <= lower) display = 0;
-                    else if (rawValue > upper) display = 255;
-                    else
-                        display = ((rawValue - (windowCenter - 0.5)) / (windowWidth - 1) + 0.5) * 255.0;
-
-                    byte b = (byte)(Math.Clamp(display, 0, 255));
-                    pixels8[i] = invert ? (byte)(255 - b) : b;
-                }
-            }
-            else if (bitsAllocated == 8)
-            {
-                for (int i = 0; i < width * height; i++)
-                {
-                    byte b = rawBytes[i];
-                    pixels8[i] = invert ? (byte)(255 - b) : b;
-                }
-            }
-            else
-            {
-                throw new NotSupportedException($"BitsAllocated={bitsAllocated} nicht unterstützt.");
-            }
-
-            using var imageSharp = SixLabors.ImageSharp.Image.LoadPixelData<L8>(pixels8, width, height);
-            using var temp = new MemoryStream();
-            await imageSharp.SaveAsPngAsync(temp);
-            byte[] imageBytes = temp.ToArray();
-            var imageSource = ImageSource.FromStream(() => new MemoryStream(imageBytes));
-
-            var vm = new DicomFileViewModel
-            {
-                FileName = Path.GetFileName(path),
-                Image = imageSource
-            };
-            vm.SetMetadata(metadataList);
-
-
-            //UpdateWindowTitle();
-
-            return vm;
+                return vm;
+            }, ct).ConfigureAwait(false);
         }
-//        private void UpdateWindowTitle()
-//        {
-//#if WINDOWS || MACCATALYST
-//            // immer auf dem UI-Thread arbeiten
-//            Microsoft.Maui.ApplicationModel.MainThread.BeginInvokeOnMainThread(() =>
-//            {
-//                try
-//                {
-//                    var win = Application.Current?.Windows?.FirstOrDefault();
-//                    if (win == null) return;
-
-//                    var left = Left?.FileName ?? "—";
-//                    var right = Right?.FileName ?? "—";
-//                    var title = $"DViewer  —  Links: {left}   |   Rechts: {right}";
-
-//#if WINDOWS
-//                    // WinUI-spezifisch absichern
-//                    if (win?.Handler?.PlatformView is Microsoft.UI.Xaml.Window nativeWin)
-//                    {
-//                        nativeWin.Title = title;
-//                    }
-//                    else
-//                    {
-//                        // Fallback (MAUI abstrahiert das ab .NET 8 teilweise)
-//                        win.Title = title;
-//                    }
-//#else
-//            win.Title = title;
-//#endif
-//                }
-//                catch
-//                {
-//                    // niemals crashen, wenn Titel setzen fehlschlägt
-//                }
-//            });
-//#endif
-//        }
-
     }
 }
