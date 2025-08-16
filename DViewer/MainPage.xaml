@@ -358,23 +358,23 @@
                         <!-- PN -->
                         <Grid Grid.Column="2" IsVisible="{Binding IsPersonName}"
             ColumnDefinitions="2*,2*,*,Auto,Auto" ColumnSpacing="4">
-                            <Entry Grid.Column="0" Style="{StaticResource CellEntry}" Placeholder="Nachname" Text="{Binding LeftPN_Family, Mode=TwoWay}" />
-                            <Entry Grid.Column="1" Style="{StaticResource CellEntry}" Placeholder="Vorname"  Text="{Binding LeftPN_Given,  Mode=TwoWay}" />
-                            <Entry Grid.Column="2" Style="{StaticResource CellEntry}" Placeholder="Mittel"   Text="{Binding LeftPN_Middle, Mode=TwoWay}" />
-                            <Entry Grid.Column="3" Style="{StaticResource CellEntry}" Placeholder="Präfix"   WidthRequest="70" Text="{Binding LeftPN_Prefix, Mode=TwoWay}" />
-                            <Entry Grid.Column="4" Style="{StaticResource CellEntry}" Placeholder="Suffix"   WidthRequest="70" Text="{Binding LeftPN_Suffix, Mode=TwoWay}" />
+                            <Entry Grid.Column="0" Style="{StaticResource CellEntry}" Placeholder="Nachname" Text="{Binding LeftPN_Family, Mode=OneWay}" />
+                            <Entry Grid.Column="1" Style="{StaticResource CellEntry}" Placeholder="Vorname"  Text="{Binding LeftPN_Given,  Mode=OneWay}" />
+                            <Entry Grid.Column="2" Style="{StaticResource CellEntry}" Placeholder="Mittel"   Text="{Binding LeftPN_Middle, Mode=OneWay}" />
+                            <Entry Grid.Column="3" Style="{StaticResource CellEntry}" Placeholder="Präfix"   WidthRequest="70" Text="{Binding LeftPN_Prefix, Mode=OneWay}" />
+                            <Entry Grid.Column="4" Style="{StaticResource CellEntry}" Placeholder="Suffix"   WidthRequest="70" Text="{Binding LeftPN_Suffix, Mode=OneWay}" />
                         </Grid>
 
                         <!-- Sex -->
                         <Picker Grid.Column="2"
               ItemsSource="{Binding Source={x:Reference RootPage}, Path=BindingContext.SexOptions}"
-              SelectedItem="{Binding LeftSex, Mode=TwoWay}"
+              SelectedItem="{Binding LeftSex, Mode=OneWay}"
               IsVisible="{Binding IsSex}"
               HorizontalOptions="Fill" Margin="0,0,8,0"
               TextColor="Black" TitleColor="Black" />
 
                         <!-- Datum (Anzeige + klickbarer Picker) -->
-                        <Grid Grid.Column="2" IsVisible="{Binding IsDate}" ColumnSpacing="0">
+                        <Grid Grid.Column="2" IsVisible="{Binding IsDate,Mode=OneWay}" ColumnSpacing="0">
                             <HorizontalStackLayout Grid.ColumnSpan="2" Spacing="6" Padding="8,0,8,0">
                                 <Label     Text="{Binding LeftDate, Converter={StaticResource FormatDateDisplayConverter}}"
                  VerticalTextAlignment="Center" TextColor="Black" FontSize="13" />
@@ -390,14 +390,14 @@
                     Opacity="0.01"
                     HeightRequest="20">
                                 <DatePicker.Date>
-                                    <Binding Path="LeftDate" Mode="TwoWay"
+                                    <Binding Path="LeftDate" Mode="OneWay"
                      Converter="{StaticResource NullableDateConverter}" />
                                 </DatePicker.Date>
                             </DatePicker>
                         </Grid>
 
                         <!-- Zeit -->
-                        <Grid Grid.Column="2" IsVisible="{Binding IsTime}" ColumnSpacing="0">
+                        <Grid Grid.Column="2" IsVisible="{Binding IsTime,Mode=OneWay}" ColumnSpacing="0">
                             <HorizontalStackLayout Grid.ColumnSpan="2" Spacing="6" Padding="8,0,8,0">
                                 <Label Text="{Binding LeftTime, StringFormat='{}{0:HH\\:mm\\:ss}'}"
                  VerticalTextAlignment="Center" TextColor="Black" FontSize="13" />
@@ -412,7 +412,7 @@
                     Opacity="0.01"
                     HeightRequest="20">
                                 <TimePicker.Time>
-                                    <Binding Path="LeftTime" Mode="TwoWay"
+                                    <Binding Path="LeftTime" Mode="OneWay"
                      Converter="{StaticResource NullableTimeConverter}" />
                                 </TimePicker.Time>
                             </TimePicker>
@@ -434,23 +434,23 @@
                         <!-- PN -->
                         <Grid Grid.Column="3" IsVisible="{Binding IsPersonName}"
             ColumnDefinitions="2*,2*,*,Auto,Auto" ColumnSpacing="4">
-                            <Entry Grid.Column="0" Style="{StaticResource CellEntry}" Placeholder="Nachname" Text="{Binding RightPN_Family, Mode=TwoWay}" />
-                            <Entry Grid.Column="1" Style="{StaticResource CellEntry}" Placeholder="Vorname"  Text="{Binding RightPN_Given,  Mode=TwoWay}" />
-                            <Entry Grid.Column="2" Style="{StaticResource CellEntry}" Placeholder="Mittel"   Text="{Binding RightPN_Middle, Mode=TwoWay}" />
-                            <Entry Grid.Column="3" Style="{StaticResource CellEntry}" Placeholder="Präfix"   WidthRequest="70" Text="{Binding RightPN_Prefix, Mode=TwoWay}" />
-                            <Entry Grid.Column="4" Style="{StaticResource CellEntry}" Placeholder="Suffix"   WidthRequest="70" Text="{Binding RightPN_Suffix, Mode=TwoWay}" />
+                            <Entry Grid.Column="0" Style="{StaticResource CellEntry}" Placeholder="Nachname" Text="{Binding RightPN_Family, Mode=OneWay}" />
+                            <Entry Grid.Column="1" Style="{StaticResource CellEntry}" Placeholder="Vorname"  Text="{Binding RightPN_Given,  Mode=OneWay}" />
+                            <Entry Grid.Column="2" Style="{StaticResource CellEntry}" Placeholder="Mittel"   Text="{Binding RightPN_Middle, Mode=OneWay}" />
+                            <Entry Grid.Column="3" Style="{StaticResource CellEntry}" Placeholder="Präfix"   WidthRequest="70" Text="{Binding RightPN_Prefix, Mode=OneWay}" />
+                            <Entry Grid.Column="4" Style="{StaticResource CellEntry}" Placeholder="Suffix"   WidthRequest="70" Text="{Binding RightPN_Suffix, Mode=OneWay}" />
                         </Grid>
 
                         <!-- Sex -->
                         <Picker Grid.Column="3"
               ItemsSource="{Binding Source={x:Reference RootPage}, Path=BindingContext.SexOptions}"
-              SelectedItem="{Binding RightSex, Mode=TwoWay}"
+              SelectedItem="{Binding RightSex, Mode=OneWay}"
               IsVisible="{Binding IsSex}"
               HorizontalOptions="Fill" Margin="0,0,8,0"
               TextColor="Black" TitleColor="Black" />
 
                         <!-- Datum -->
-                        <Grid Grid.Column="3" IsVisible="{Binding IsDate}" ColumnSpacing="0">
+                        <Grid Grid.Column="3" IsVisible="{Binding IsDate,Mode=OneWay}" ColumnSpacing="0">
                             <HorizontalStackLayout Grid.ColumnSpan="2" Spacing="6" Padding="8,0,8,0">
                                 <Label Text="{Binding RightDate, Converter={StaticResource FormatDateDisplayConverter}}"
                  VerticalTextAlignment="Center" TextColor="Black" FontSize="13" />
@@ -466,14 +466,14 @@
                     Opacity="0.01"
                     HeightRequest="20">
                                 <DatePicker.Date>
-                                    <Binding Path="RightDate" Mode="TwoWay"
+                                    <Binding Path="RightDate" Mode="OneWay"
                      Converter="{StaticResource NullableDateConverter}" />
                                 </DatePicker.Date>
                             </DatePicker>
                         </Grid>
 
                         <!-- Zeit -->
-                        <Grid Grid.Column="3" IsVisible="{Binding IsTime}" ColumnSpacing="0">
+                        <Grid Grid.Column="3" IsVisible="{Binding IsTime,Mode=OneWay}" ColumnSpacing="0">
                             <HorizontalStackLayout Grid.ColumnSpan="2" Spacing="6" Padding="8,0,8,0">
                                 <Label Text="{Binding RightTime, StringFormat='{}{0:HH\\:mm\\:ss}'}"
                  VerticalTextAlignment="Center" TextColor="Black" FontSize="13" />
@@ -488,7 +488,7 @@
                     Opacity="0.01"
                     HeightRequest="20">
                                 <TimePicker.Time>
-                                    <Binding Path="RightTime" Mode="TwoWay"
+                                    <Binding Path="RightTime" Mode="OneWay"
                      Converter="{StaticResource NullableTimeConverter}" />
                                 </TimePicker.Time>
                             </TimePicker>
@@ -497,12 +497,12 @@
                         <!-- Numeric -->
                         <Entry Grid.Column="3" Style="{StaticResource CellEntry}"
              Keyboard="Numeric"
-             Text="{Binding RightValue, Mode=TwoWay}"
+             Text="{Binding RightValue, Mode=OneWay}"
              IsVisible="{Binding IsNumeric}" />
 
                         <!-- Generic -->
                         <Entry Grid.Column="3" Style="{StaticResource CellEntry}"
-             Text="{Binding RightValue, Mode=TwoWay}"
+             Text="{Binding RightValue, Mode=OneWay}"
              IsVisible="{Binding IsGeneric}" />
 
                     </Grid>

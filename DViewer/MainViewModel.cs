@@ -293,12 +293,15 @@ namespace DViewer
         public IReadOnlyList<string> SexOptions { get; } = new[] { "M", "F", "N", "O", "U" };
 
         // ---------- Aufbauen der Basismenge ----------
+        // Basisliste (voll) für Combine
+    
+        // … deine bestehenden Members …
+
         private void RebuildCombined()
         {
-            _allCombined.Clear();
-
-            var leftMeta = (IEnumerable<DicomMetadataItem>)(Left?.Metadata ?? Array.Empty<DicomMetadataItem>());
-            var rightMeta = (IEnumerable<DicomMetadataItem>)(Right?.Metadata ?? Array.Empty<DicomMetadataItem>());
+            // Quell-Snapshots (niemals UI-Objekte wiederverwenden)
+            var leftMeta = (System.Collections.Generic.IEnumerable<DicomMetadataItem>)(Left?.Metadata ?? System.Array.Empty<DicomMetadataItem>());
+            var rightMeta = (System.Collections.Generic.IEnumerable<DicomMetadataItem>)(Right?.Metadata ?? System.Array.Empty<DicomMetadataItem>());
 
             var union = leftMeta.Select(m => m.TagId)
                                 .Concat(rightMeta.Select(m => m.TagId))
@@ -310,42 +313,68 @@ namespace DViewer
             var leftMap = leftMeta.ToDictionary(m => m.TagId, StringComparer.OrdinalIgnoreCase);
             var rightMap = rightMeta.ToDictionary(m => m.TagId, StringComparer.OrdinalIgnoreCase);
 
+            // Alte Handler sauber lösen
+            foreach (var it in CombinedMetadataList)
+                it.PropertyChanged -= RowChanged;
+
+            CombinedMetadataList.Clear();
+            _allCombined.Clear();
+
+            // Neu aufbauen – OHNE Events während Befüllung
             foreach (var tag in union)
             {
                 leftMap.TryGetValue(tag, out var l);
                 rightMap.TryGetValue(tag, out var r);
 
-                var row = new CombinedMetadataItem
+                var item = new CombinedMetadataItem
                 {
                     TagId = tag,
                     Name = l?.Name ?? r?.Name ?? string.Empty,
-                    Vr = l?.Vr ?? r?.Vr ?? string.Empty
+                    Vr = l?.Vr ?? r?.Vr ?? string.Empty,
                 };
 
-                // <<< wichtig: initiales Setzen OHNE Events
-                row.SetInitialValues(l?.Value, r?.Value);
+                // atomar & still setzen
+                item.SetInitialValues(l?.Value, r?.Value);
 
-                // Highlights initial
-                row.IsHighlighted = HighlightDifferences && row.IsDifferent;
-                row.LeftInvalidHighlighted = HighlightInvalidValues && row.IsLeftInvalid;
-                row.RightInvalidHighlighted = HighlightInvalidValues && row.IsRightInvalid;
+                // gelb/rot Flags nach Wunsch
+                item.IsHighlighted = HighlightDifferences && item.IsDifferent;
+                item.LeftInvalidHighlighted = HighlightInvalidValues && item.IsLeftInvalid;
+                item.RightInvalidHighlighted = HighlightInvalidValues && item.IsRightInvalid;
 
-                _allCombined.Add(row);
+                _allCombined.Add(item);
             }
 
-            // Tag-Liste rechts aktualisieren
+            // Zebra
+            for (int i = 0; i < _allCombined.Count; i++)
+                _allCombined[i].IsAlternate = (i % 2) == 1;
+
+            // Jetzt erst in die ObservableCollection & Events hängen
+            foreach (var it in _allCombined)
+            {
+                CombinedMetadataList.Add(it);
+                it.PropertyChanged += RowChanged;
+            }
+
+            // Tag-Filter rechts neu aufbauen (wie bisher bei dir)
             _allTags.Clear();
             foreach (var tag in union)
             {
-                var nm = (leftMap.TryGetValue(tag, out var l) ? l?.Name
-                         : rightMap.TryGetValue(tag, out var r) ? r?.Name
-                         : null) ?? string.Empty;
+                var nm = (leftMap.TryGetValue(tag, out var l2) ? l2?.Name
+                        : rightMap.TryGetValue(tag, out var r2) ? r2?.Name
+                        : null) ?? string.Empty;
+
                 _allTags.Add(new TagFilterItem { TagId = tag, Name = nm });
             }
             RefreshTagFilterList();
 
-            UpdateCombinedMetadataList();
+            // gefilterte Ansicht neu rendern
+            //OnPropertyChanged(nameof(FilteredMetadata));
+            OnPropertyChanged(nameof(TagHeaderText));
+            OnPropertyChanged(nameof(NameHeaderText));
+            OnPropertyChanged(nameof(LeftHeaderText));
+            OnPropertyChanged(nameof(RightHeaderText));
         }
+
 
         // ---------- Anzeige-Liste auf Basisliste anwenden ----------
         private bool _updatingList;
