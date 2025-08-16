@@ -11,6 +11,86 @@ namespace DViewer
 {
     public class MainViewModel : INotifyPropertyChanged
     {
+
+
+
+        public ObservableCollection<CombinedMetadataItem> CombinedMetadataList { get; private set; } = new();
+
+        // call this after setting Left.Metadata / Right.Metadata
+        private void RebuildCombined()
+        {
+            // 1) alte Abos entfernen
+            foreach (var it in CombinedMetadataList)
+                it.PropertyChanged -= OnRowPropertyChanged;
+
+            // 2) Dictionaries (nur lokal, keine geteilten Referenzen)
+            var leftDict = Left?.Metadata != null ? Left.Metadata.ToDictionary(m => m.TagId) : new Dictionary<string, DicomMetadataItem>();
+            var rightDict = Right?.Metadata != null ? Right.Metadata.ToDictionary(m => m.TagId) : new Dictionary<string, DicomMetadataItem>();
+
+            // 3) alle Keys sortiert
+            var allKeys = new SortedSet<string>(leftDict.Keys.Concat(rightDict.Keys), StringComparer.Ordinal);
+
+            // 4) neu aufbauen (neue Instanzen, keine Reuse!)
+            var fresh = new ObservableCollection<CombinedMetadataItem>();
+            int row = 0;
+            foreach (var key in allKeys)
+            {
+                leftDict.TryGetValue(key, out var l);
+                rightDict.TryGetValue(key, out var r);
+
+                var item = new CombinedMetadataItem
+                {
+                    TagId = key,
+                    Name = l?.Name ?? r?.Name ?? string.Empty,
+                    Vr = l?.Vr ?? r?.Vr ?? string.Empty,
+                    LeftValue = l?.Value ?? string.Empty,
+                    RightValue = r?.Value ?? string.Empty,
+                    IsAlternate = (row++ % 2) == 1
+                };
+
+                item.PropertyChanged += OnRowPropertyChanged; // nur 1× pro Build
+                fresh.Add(item);
+            }
+
+            CombinedMetadataList = fresh;
+            Raise(nameof(CombinedMetadataList));
+        }
+
+        private void OnRowPropertyChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            // Wenn du Editieren auf eine Seite zurückschreiben willst,
+            // mach das hier – aber NUR die eine Seite (kein Spiegeln).
+            if (sender is not CombinedMetadataItem row) return;
+            if (e.PropertyName == nameof(CombinedMetadataItem.LeftValue))
+                UpdateBackstore(Left?.Metadata, row.TagId, row.LeftValue);
+            else if (e.PropertyName == nameof(CombinedMetadataItem.RightValue))
+                UpdateBackstore(Right?.Metadata, row.TagId, row.RightValue);
+        }
+
+        private static void UpdateBackstore(List<DicomMetadataItem>? list, string tagId, string newValue)
+        {
+            if (list == null) return;
+            var m = list.FirstOrDefault(x => x.TagId == tagId);
+            if (m != null) m.Value = newValue;
+            else list.Add(new DicomMetadataItem { TagId = tagId, Name = "", Vr = "", Value = newValue });
+        }
+
+        private void Raise(string name) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+
+
+
+
+
+
+
+
+
+
+
+
         private readonly DicomLoader _loader;
 
         public MainViewModel(DicomLoader loader)
@@ -40,7 +120,7 @@ namespace DViewer
         public string[] SexOptions { get; } = { "M", "F", "O", "N", "U" };
 
         // Vergleichsliste fürs Grid
-        public ObservableCollection<CombinedMetadataItem> CombinedMetadataList { get; }
+        //public ObservableCollection<CombinedMetadataItem> CombinedMetadataList { get; }
 
         // Toggles
         bool _highlightDifferences;
@@ -96,7 +176,7 @@ namespace DViewer
             RebuildCombined();
         }
 
-        private void RebuildCombined()
+        private void xRebuildCombined()
         {
             // 1) SNAPSHOTS bauen (nie Objekte teilen!)
             var left = (Left?.Metadata ?? Enumerable.Empty<DicomMetadataItem>()).ToDictionary(m => m.TagId, StringComparer.OrdinalIgnoreCase);
@@ -163,7 +243,7 @@ namespace DViewer
         }
 
         // INotifyPropertyChanged
-        public event PropertyChangedEventHandler? PropertyChanged;
+        //public event PropertyChangedEventHandler? PropertyChanged;
         protected void OnPropertyChanged([CallerMemberName] string? name = null)
         {
             if (string.IsNullOrEmpty(name)) return;
