@@ -3,20 +3,21 @@ using Microsoft.Maui.Controls;
 
 namespace DViewer
 {
-    public class DicomFileViewModel
+    public sealed class DicomFileViewModel
     {
         public string FileName { get; set; } = string.Empty;
 
-        // kleine Vorschau (kann null sein)
+        // Vorschau (kann null sein)
         public ImageSource? Image { get; set; }
 
-        // unveränderliche Momentaufnahme der Metadaten für diese Datei
-        public List<DicomMetadataItem> Metadata { get; private set; } = new();
+        // Metadaten (read-only Property; intern setzbar)
+        public IReadOnlyList<DicomMetadataItem> Metadata { get; private set; } = new List<DicomMetadataItem>();
 
         public void SetMetadata(IEnumerable<DicomMetadataItem> items)
         {
-            // defensiv kopieren, nie Referenzen nach außen teilen
-            Metadata = new List<DicomMetadataItem>(items ?? []);
+            Metadata = items is IReadOnlyList<DicomMetadataItem> ro
+                ? ro
+                : new List<DicomMetadataItem>(items);
         }
     }
 }
