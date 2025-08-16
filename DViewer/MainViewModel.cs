@@ -19,13 +19,14 @@ namespace DViewer
         {
             _loader = loader;
 
+            // CollectionView-Quelle (wird von UpdateCombinedMetadataList() befüllt)
             CombinedMetadataList.CollectionChanged += CombinedChanged;
 
             LoadLeftCommand = new DelegateCommand(async () => await LoadSideAsync(isLeft: true));
             LoadRightCommand = new DelegateCommand(async () => await LoadSideAsync(isLeft: false));
 
-            ApplyFilterCommand = new ParameterCommand(_ => RaiseFilterChanged());
-            ClearFilterCommand = new ParameterCommand(_ => { FilterText = string.Empty; RaiseFilterChanged(); });
+            ApplyFilterCommand = new ParameterCommand(_ => QueueRecalc());
+            ClearFilterCommand = new ParameterCommand(_ => { FilterText = string.Empty; QueueRecalc(); });
 
             SortCommand = new ParameterCommand(p =>
             {
@@ -52,7 +53,7 @@ namespace DViewer
             RebuildCombined();
         }
 
-        // Wird von MainPage.xaml.cs aufgerufen (Datei via Shell/Open with)
+        // Wird von MainPage.xaml.cs aufgerufen (Datei via Shell/“Öffnen mit”)
         public async Task HandleExternalOpenAsync(string path, bool preferLeftIfEmpty = true, CancellationToken ct = default)
         {
             if (string.IsNullOrWhiteSpace(path)) return;
@@ -63,7 +64,7 @@ namespace DViewer
             else if (Right?.Metadata == null || Right.Metadata.Count == 0)
                 Right = vm;
             else
-                Right = vm; // ersetze rechts als Default
+                Right = vm; // default: rechts ersetzen
 
             MainThread.BeginInvokeOnMainThread(() =>
             {
@@ -74,6 +75,10 @@ namespace DViewer
         }
 
         // ---------- Kombinierte Liste ----------
+        // Unveränderte Basisliste (ungefiltert/unsortiert)
+        private List<CombinedMetadataItem> _allCombined = new();
+
+        // View für die CollectionView (gefiltert/sortiert aus _allCombined)
         public ObservableCollection<CombinedMetadataItem> CombinedMetadataList { get; } = new();
 
         private CombinedMetadataItem? _selected;
@@ -83,79 +88,59 @@ namespace DViewer
             set { if (_selected == value) return; _selected = value; OnPropertyChanged(); }
         }
 
-        // Anzeige-Quelle für CollectionView
-        public IEnumerable<CombinedMetadataItem> FilteredMetadata
-        {
-            get
-            {
-                IEnumerable<CombinedMetadataItem> q = CombinedMetadataList;
-
-                if (ShowOnlyDifferences) q = q.Where(i => i.IsDifferent);
-                if (ShowOnlyInvalid) q = q.Where(i => i.IsLeftInvalid || i.IsRightInvalid);
-
-                if (SelectedTagFilter != null)
-                    q = q.Where(i => string.Equals(i.TagId, SelectedTagFilter.TagId, StringComparison.OrdinalIgnoreCase));
-
-                var f = (FilterText ?? string.Empty).Trim();
-                if (!string.IsNullOrEmpty(f))
-                {
-                    var tokens = f.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                    q = q.Where(i => tokens.All(t =>
-                        (i.TagId?.Contains(t, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                        (i.Name?.Contains(t, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                        (i.LeftValue?.Contains(t, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                        (i.RightValue?.Contains(t, StringComparison.OrdinalIgnoreCase) ?? false)));
-                }
-
-                q = _sortCol switch
-                {
-                    "TagId" => _asc ? q.OrderBy(i => i.TagId, StringComparer.OrdinalIgnoreCase)
-                                        : q.OrderByDescending(i => i.TagId, StringComparer.OrdinalIgnoreCase),
-                    "Name" => _asc ? q.OrderBy(i => i.Name, StringComparer.OrdinalIgnoreCase)
-                                        : q.OrderByDescending(i => i.Name, StringComparer.OrdinalIgnoreCase),
-                    "LeftValue" => _asc ? q.OrderBy(i => i.LeftValue, StringComparer.OrdinalIgnoreCase)
-                                        : q.OrderByDescending(i => i.LeftValue, StringComparer.OrdinalIgnoreCase),
-                    "RightValue" => _asc ? q.OrderBy(i => i.RightValue, StringComparer.OrdinalIgnoreCase)
-                                        : q.OrderByDescending(i => i.RightValue, StringComparer.OrdinalIgnoreCase),
-                    _ => q
-                };
-
-                return q;
-            }
-        }
-
         // ---------- Filter ----------
         private string? _filterText;
         public string? FilterText
         {
             get => _filterText;
-            set { if (_filterText == value) return; _filterText = value; OnPropertyChanged(); RaiseFilterChanged(); }
+            set
+            {
+                if (_filterText == value) return;
+                _filterText = value;
+                OnPropertyChanged();
+                QueueRecalc();   // Filter sofort anwenden (koalesziert)
+            }
         }
 
         private bool _showOnlyDiff;
         public bool ShowOnlyDifferences
         {
             get => _showOnlyDiff;
-            set { if (_showOnlyDiff == value) return; _showOnlyDiff = value; OnPropertyChanged(); RaiseFilterChanged(); }
+            set { if (_showOnlyDiff == value) return; _showOnlyDiff = value; OnPropertyChanged(); QueueRecalc(); }
         }
 
         private bool _showOnlyInvalid;
         public bool ShowOnlyInvalid
         {
             get => _showOnlyInvalid;
-            set { if (_showOnlyInvalid == value) return; _showOnlyInvalid = value; OnPropertyChanged(); RaiseFilterChanged(); }
+            set { if (_showOnlyInvalid == value) return; _showOnlyInvalid = value; OnPropertyChanged(); QueueRecalc(); }
         }
 
-        // Alias (deine alten Bindings)
+        // Toggles: visuelle Highlights (werden zusätzlich zur Filterung gesetzt)
+        private bool _highlightDifferences;
         public bool HighlightDifferences
         {
-            get => ShowOnlyDifferences;
-            set { if (ShowOnlyDifferences == value) return; ShowOnlyDifferences = value; OnPropertyChanged(); }
+            get => _highlightDifferences;
+            set
+            {
+                if (_highlightDifferences == value) return;
+                _highlightDifferences = value;
+                OnPropertyChanged();
+                ApplyRowHighlights(CombinedMetadataList);
+            }
         }
+
+        private bool _highlightInvalidValues;
         public bool HighlightInvalidValues
         {
-            get => ShowOnlyInvalid;
-            set { if (ShowOnlyInvalid == value) return; ShowOnlyInvalid = value; OnPropertyChanged(); }
+            get => _highlightInvalidValues;
+            set
+            {
+                if (_highlightInvalidValues == value) return;
+                _highlightInvalidValues = value;
+                OnPropertyChanged();
+                ApplyInvalidHighlight(CombinedMetadataList);
+            }
         }
 
         public ParameterCommand ApplyFilterCommand { get; }
@@ -180,37 +165,40 @@ namespace DViewer
                 => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(n));
         }
 
-
-
-
         private readonly ObservableCollection<TagFilterItem> _allTags = new();
         public ObservableCollection<TagFilterItem> FilteredTagFilters { get; } = new();
 
-        private string? _tagSearch;
+        private string? _tagSearchText;
         public string? TagSearchText
         {
-            get => _tagSearch;
-            set { if (_tagSearch == value) return; _tagSearch = value; OnPropertyChanged(); RefreshTagFilterList(); }
-        }
-
-        private TagFilterItem? _selectedTag;
-        public TagFilterItem? SelectedTagFilter
-        {
-            get => _selectedTag;
+            get => _tagSearchText;
             set
             {
-                if (_selectedTag == value) return;
+                if (_tagSearchText == value) return;
+                _tagSearchText = value;
+                OnPropertyChanged();
+                RefreshTagFilterList();
+            }
+        }
 
-                // altes deselektieren
-                if (_selectedTag != null) _selectedTag.IsSelected = false;
+        private TagFilterItem? _selectedTag; // für Anzeigezustand (blau hinterlegt)
+        private TagFilterItem? _selectedTagFilter; // tatsächlicher Filter
+        public TagFilterItem? SelectedTagFilter
+        {
+            get => _selectedTagFilter;
+            set
+            {
+                if (_selectedTagFilter == value) return;
 
+                if (_selectedTagFilter != null) _selectedTagFilter.IsSelected = false;
+                _selectedTagFilter = value;
                 _selectedTag = value;
                 OnPropertyChanged();
 
-                // neues selektieren
-                if (_selectedTag != null) _selectedTag.IsSelected = true;
+                if (_selectedTagFilter != null) _selectedTagFilter.IsSelected = true;
 
-                RaiseFilterChanged();
+                RefreshTagFilterList();
+                QueueRecalc();   // Filter sofort anwenden (koalesziert)
             }
         }
 
@@ -219,10 +207,10 @@ namespace DViewer
             TagSearchText = string.Empty;
             if (_selectedTag != null) _selectedTag.IsSelected = false;
             _selectedTag = null;
+            _selectedTagFilter = null;
             RefreshTagFilterList();
-            RaiseFilterChanged();
+            QueueRecalc();
         });
-
 
         private void RefreshTagFilterList()
         {
@@ -240,12 +228,11 @@ namespace DViewer
             foreach (var it in q.Take(200))
                 FilteredTagFilters.Add(it);
 
-            // Sichtbare Liste farblich/selektiv synchronisieren
+            // Sichtbare Liste mit Auswahl synchronisieren
             foreach (var it in FilteredTagFilters)
                 it.IsSelected = _selectedTag != null &&
-                                string.Equals(it.TagId, _selectedTag.TagId, StringComparison.OrdinalIgnoreCase);
+                                string.Equals(it.TagId, _selectedTag.TagId, StringComparison.OrdinalIgnoreCase );
         }
-
 
         // ---------- Sortierung ----------
         public ParameterCommand SortCommand { get; }
@@ -265,7 +252,7 @@ namespace DViewer
             OnPropertyChanged(nameof(NameHeaderText));
             OnPropertyChanged(nameof(LeftHeaderText));
             OnPropertyChanged(nameof(RightHeaderText));
-            RaiseFilterChanged();
+            UpdateCombinedMetadataList();
         }
 
         public string TagHeaderText => _sortCol == "TagId" ? (_asc ? "Tag ▲" : "Tag ▼") : "Tag";
@@ -299,8 +286,8 @@ namespace DViewer
             var leftMap = leftMeta.ToDictionary(m => m.TagId, StringComparer.OrdinalIgnoreCase);
             var rightMap = rightMeta.ToDictionary(m => m.TagId, StringComparer.OrdinalIgnoreCase);
 
-            CombinedMetadataList.Clear();
-
+            // Basisliste neu aufbauen (ohne Filter/Sort)
+            var basis = new List<CombinedMetadataItem>(union.Count);
             foreach (var tag in union)
             {
                 leftMap.TryGetValue(tag, out var l);
@@ -316,15 +303,16 @@ namespace DViewer
                 if (l != null) item.LeftValue = l.Value ?? string.Empty;
                 if (r != null) item.RightValue = r.Value ?? string.Empty;
 
+                // Anfangszustände für "nur invalid zeigen"
                 item.LeftInvalidHighlighted = ShowOnlyInvalid && item.IsLeftInvalid;
                 item.RightInvalidHighlighted = ShowOnlyInvalid && item.IsRightInvalid;
 
-                item.PropertyChanged += RowChanged;
-                CombinedMetadataList.Add(item);
+                basis.Add(item);
             }
 
-            for (int i = 0; i < CombinedMetadataList.Count; i++)
-                CombinedMetadataList[i].IsAlternate = (i % 2) == 1;
+            // Zebra (Basis, wird später für View neu gesetzt)
+            for (int i = 0; i < basis.Count; i++)
+                basis[i].IsAlternate = (i % 2) == 1;
 
             // Tag-Liste rechts
             _allTags.Clear();
@@ -338,7 +326,104 @@ namespace DViewer
             }
             RefreshTagFilterList();
 
-            RaiseFilterChanged();
+            // Basisliste übernehmen und View berechnen
+            _allCombined = basis;
+            UpdateCombinedMetadataList();
+        }
+
+        // Rekonfiguration der View (Filter + Sort) koaleszieren
+        private bool _recalcQueued;
+        private void QueueRecalc()
+        {
+            if (_recalcQueued) return;
+            _recalcQueued = true;
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                _recalcQueued = false;
+                UpdateCombinedMetadataList();
+            });
+        }
+
+        private bool _updatingList;
+        private void UpdateCombinedMetadataList()
+        {
+            if (_updatingList) return;
+            _updatingList = true;
+            try
+            {
+                IEnumerable<CombinedMetadataItem> items = _allCombined ?? Enumerable.Empty<CombinedMetadataItem>();
+
+                // Textfilter
+                var f = (FilterText ?? string.Empty).Trim();
+                if (f.Length > 0)
+                {
+                    var tokens = f.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                    items = items.Where(i => tokens.All(t =>
+                        (i.TagId?.Contains(t, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                        (i.Name?.Contains(t, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                        (i.LeftValue?.Contains(t, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                        (i.RightValue?.Contains(t, StringComparison.OrdinalIgnoreCase) ?? false)));
+                }
+
+                // Tag-spezifischer Filter
+                if (_selectedTagFilter != null && !string.IsNullOrEmpty(_selectedTagFilter.TagId))
+                {
+                    var tagId = _selectedTagFilter.TagId;
+                    items = items.Where(i => string.Equals(i.TagId, tagId, StringComparison.OrdinalIgnoreCase));
+                }
+
+                // Nur Unterschiede
+                if (ShowOnlyDifferences)
+                    items = items.Where(i => i.IsDifferent);
+
+                // Nur ungültige
+                if (ShowOnlyInvalid)
+                    items = items.Where(i => i.IsLeftInvalid || i.IsRightInvalid);
+
+                // Sortierung
+                items = _sortCol switch
+                {
+                    "TagId" => _asc ? items.OrderBy(i => i.TagId, StringComparer.OrdinalIgnoreCase)
+                                         : items.OrderByDescending(i => i.TagId, StringComparer.OrdinalIgnoreCase),
+                    "Name" => _asc ? items.OrderBy(i => i.Name, StringComparer.OrdinalIgnoreCase)
+                                         : items.OrderByDescending(i => i.Name, StringComparer.OrdinalIgnoreCase),
+                    "LeftValue" => _asc ? items.OrderBy(i => i.LeftValue, StringComparer.OrdinalIgnoreCase)
+                                         : items.OrderByDescending(i => i.LeftValue, StringComparer.OrdinalIgnoreCase),
+                    "RightValue" => _asc ? items.OrderBy(i => i.RightValue, StringComparer.OrdinalIgnoreCase)
+                                         : items.OrderByDescending(i => i.RightValue, StringComparer.OrdinalIgnoreCase),
+                    _ => items
+                };
+
+                var list = items.ToList();
+
+                // Zebra neu setzen basierend auf gefilterter Sicht
+                for (int i = 0; i < list.Count; i++)
+                    list[i].IsAlternate = (i % 2) == 1;
+
+                // Alte Items -> RowChanged abmelden (wird auch in CombinedChanged erledigt,
+                // aber Clear() liefert ein Reset-Event; wir entkoppeln explizit)
+                foreach (var it in CombinedMetadataList)
+                    it.PropertyChanged -= RowChanged;
+
+                CombinedMetadataList.Clear();
+
+                foreach (var it in list)
+                    CombinedMetadataList.Add(it); // CombinedChanged hängt RowChanged wieder an
+
+                // Sicht-spezifische Highlights setzen
+                ApplyRowHighlights(CombinedMetadataList);
+                ApplyInvalidHighlight(CombinedMetadataList);
+
+                // Headertexte evtl. neu berechnet (Pfeile)
+                OnPropertyChanged(nameof(TagHeaderText));
+                OnPropertyChanged(nameof(NameHeaderText));
+                OnPropertyChanged(nameof(LeftHeaderText));
+                OnPropertyChanged(nameof(RightHeaderText));
+            }
+            finally
+            {
+                _updatingList = false;
+            }
         }
 
         private void CombinedChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -350,8 +435,6 @@ namespace DViewer
             if (e.NewItems != null)
                 foreach (CombinedMetadataItem it in e.NewItems)
                     it.PropertyChanged += RowChanged;
-
-            RaiseFilterChanged();
         }
 
         private static readonly HashSet<string> s_filterRelevant = new(StringComparer.Ordinal)
@@ -369,36 +452,39 @@ namespace DViewer
             {
                 if (e.PropertyName == nameof(CombinedMetadataItem.LeftValue) ||
                     e.PropertyName == nameof(CombinedMetadataItem.IsLeftInvalid))
-                    row.LeftInvalidHighlighted = ShowOnlyInvalid && row.IsLeftInvalid;
+                    row.LeftInvalidHighlighted = HighlightInvalidValues && row.IsLeftInvalid;
 
                 if (e.PropertyName == nameof(CombinedMetadataItem.RightValue) ||
                     e.PropertyName == nameof(CombinedMetadataItem.IsRightInvalid))
-                    row.RightInvalidHighlighted = ShowOnlyInvalid && row.IsRightInvalid;
+                    row.RightInvalidHighlighted = HighlightInvalidValues && row.IsRightInvalid;
+
+                // Wenn Filter auf Unterschied/Invalid aktiv sind, kann sich Sicht ändern
+                if (ShowOnlyDifferences || ShowOnlyInvalid)
+                {
+                    if (e.PropertyName != null && s_filterRelevant.Contains(e.PropertyName))
+                        QueueRecalc();
+                }
+                else
+                {
+                    // ansonsten reichen die Highlight-Updates
+                }
             }
-
-            if (e.PropertyName != null && s_filterRelevant.Contains(e.PropertyName))
-                RaiseFilterChanged();
         }
 
-        // koaleszierter Refresh
-        private bool _refreshQueued;
-        private void RaiseFilterChanged()
+        private void ApplyRowHighlights(IEnumerable<CombinedMetadataItem> items)
         {
-            if (_refreshQueued) return;
-            _refreshQueued = true;
-
-            MainThread.BeginInvokeOnMainThread(() =>
-            {
-                _refreshQueued = false;
-                OnPropertyChanged(nameof(FilteredMetadata));
-            });
+            foreach (var it in items)
+                it.IsHighlighted = HighlightDifferences && it.IsDifferent;
         }
 
-        // ---------- Sort-Header Texte ----------
-        //public string TagHeaderText => _sortCol == "TagId" ? (_asc ? "Tag ▲" : "Tag ▼") : "Tag";
-        //public string NameHeaderText => _sortCol == "Name" ? (_asc ? "Name ▲" : "Name ▼") : "Name";
-        //public string LeftHeaderText => _sortCol == "LeftValue" ? (_asc ? "Links ▲" : "Links ▼") : "Links";
-        //public string RightHeaderText => _sortCol == "RightValue" ? (_asc ? "Rechts ▲" : "Rechts ▼") : "Rechts";
+        private void ApplyInvalidHighlight(IEnumerable<CombinedMetadataItem> items)
+        {
+            foreach (var it in items)
+            {
+                it.LeftInvalidHighlighted = HighlightInvalidValues && it.IsLeftInvalid;
+                it.RightInvalidHighlighted = HighlightInvalidValues && it.IsRightInvalid;
+            }
+        }
 
         // ---------- INotify ----------
         public event PropertyChangedEventHandler? PropertyChanged;
