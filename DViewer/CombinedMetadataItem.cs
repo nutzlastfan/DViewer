@@ -1,157 +1,134 @@
 ﻿using System;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
-using Microsoft.Maui.ApplicationModel;
+using Microsoft.Maui.ApplicationModel; // MainThread
 
 namespace DViewer
 {
-    /// <summary>
-    /// Zeile der Vergleichstabelle. Hält NUR Referenzen auf die linke und rechte
-    /// Datensatz-Zeile (DicomMetadataItem) und kopiert keine Werte zwischen den Seiten.
-    /// Damit kann beim Laden der zweiten Seite nichts mehr überschrieben werden.
-    /// </summary>
-    public sealed class CombinedMetadataItem : INotifyPropertyChanged, IDisposable
+    public class CombinedMetadataItem : INotifyPropertyChanged
     {
-        private readonly DicomMetadataItem? _left;
-        private readonly DicomMetadataItem? _right;
+        // --- Stammdaten ------------------------------------------------------
+        public string TagId { get; init; } = string.Empty;
+        public string Name { get; init; } = string.Empty;
+        public string Vr { get; init; } = string.Empty;   // DICOM VR
 
-        public CombinedMetadataItem(DicomMetadataItem? left, DicomMetadataItem? right)
+        // --- Werte (als DICOM-String) ---------------------------------------
+        private string _leftValue = string.Empty;
+        private string _rightValue = string.Empty;
+
+        /// <summary>
+        /// Stille Initialisierung ohne PropertyChanged (wird beim Aufbau der Basistabelle benutzt).
+        /// Kein Risiko, dass UI-Handler währenddessen ausgelöst werden.
+        /// </summary>
+        public void SetInitialValues(string? left, string? right)
         {
-            _left  = left;
-            _right = right;
+            _leftValue = left ?? string.Empty;
+            _rightValue = right ?? string.Empty;
 
-            // Initiale Validierung
-            _isLeftInvalid  = !HelperFunctions.DicomValueValidator.IsValidValue(Vr, TagId, LeftValue);
-            _isRightInvalid = !HelperFunctions.DicomValueValidator.IsValidValue(Vr, TagId, RightValue);
+            // direkte Validierung (ebenfalls ohne Events)
+            _isLeftInvalid = !HelperFunctions.DicomValueValidator.IsValidValue(Vr, TagId, _leftValue);
+            _isRightInvalid = !HelperFunctions.DicomValueValidator.IsValidValue(Vr, TagId, _rightValue);
         }
 
-        // -------- Stammdaten (aus links, sonst rechts) --------
-        public string TagId => _left?.TagId ?? _right?.TagId ?? string.Empty;
-        public string Name  => _left?.Name  ?? _right?.Name  ?? string.Empty;
-        public string Vr    => _left?.Vr    ?? _right?.Vr    ?? string.Empty;
-
-        // -------- Werte (delegiert an Seiten) --------
         public string LeftValue
         {
-            get => _left?.Value ?? string.Empty;
+            get => _leftValue;
             set
             {
-                if (_left == null) return;
-                var nv = value ?? string.Empty;
-                if (string.Equals(_left.Value ?? string.Empty, nv, StringComparison.Ordinal)) return;
+                if (_leftValue == (value ?? string.Empty)) return;
+                _leftValue = value ?? string.Empty;
 
-                _left.Value = nv;
+                // Validierung
+                IsLeftInvalid = !HelperFunctions.DicomValueValidator.IsValidValue(Vr, TagId, _leftValue);
 
-                // Validierung & abhängige Properties
-                _isLeftInvalid = !HelperFunctions.DicomValueValidator.IsValidValue(Vr, TagId, _left.Value ?? string.Empty);
+                // UI-Updates (nur die wirklich benötigten)
+                SafeRaisePropertyChanged();                 // LeftValue
+                SafeRaisePropertyChanged(nameof(IsDifferent));
 
-                Raise(nameof(LeftValue));
-                Raise(nameof(IsDifferent));
-
-                if (IsDate) Raise(nameof(LeftDate));
-                if (IsTime) Raise(nameof(LeftTime));
-                if (IsSex)  Raise(nameof(LeftSex));
+                if (IsDate) SafeRaisePropertyChanged(nameof(LeftDate));
+                if (IsTime) SafeRaisePropertyChanged(nameof(LeftTime));
+                if (IsSex) SafeRaisePropertyChanged(nameof(LeftSex));
                 if (IsPersonName)
                 {
-                    Raise(nameof(LeftPN_Family));
-                    Raise(nameof(LeftPN_Given));
-                    Raise(nameof(LeftPN_Middle));
-                    Raise(nameof(LeftPN_Prefix));
-                    Raise(nameof(LeftPN_Suffix));
+                    SafeRaisePropertyChanged(nameof(LeftPN_Family));
+                    SafeRaisePropertyChanged(nameof(LeftPN_Given));
+                    SafeRaisePropertyChanged(nameof(LeftPN_Middle));
+                    SafeRaisePropertyChanged(nameof(LeftPN_Prefix));
+                    SafeRaisePropertyChanged(nameof(LeftPN_Suffix));
                 }
             }
         }
 
         public string RightValue
         {
-            get => _right?.Value ?? string.Empty;
+            get => _rightValue;
             set
             {
-                if (_right == null) return;
-                var nv = value ?? string.Empty;
-                if (string.Equals(_right.Value ?? string.Empty, nv, StringComparison.Ordinal)) return;
+                if (_rightValue == (value ?? string.Empty)) return;
+                _rightValue = value ?? string.Empty;
 
-                _right.Value = nv;
+                IsRightInvalid = !HelperFunctions.DicomValueValidator.IsValidValue(Vr, TagId, _rightValue);
 
-                _isRightInvalid = !HelperFunctions.DicomValueValidator.IsValidValue(Vr, TagId, _right.Value ?? string.Empty);
+                SafeRaisePropertyChanged();                 // RightValue
+                SafeRaisePropertyChanged(nameof(IsDifferent));
 
-                Raise(nameof(RightValue));
-                Raise(nameof(IsDifferent));
-
-                if (IsDate) Raise(nameof(RightDate));
-                if (IsTime) Raise(nameof(RightTime));
-                if (IsSex)  Raise(nameof(RightSex));
+                if (IsDate) SafeRaisePropertyChanged(nameof(RightDate));
+                if (IsTime) SafeRaisePropertyChanged(nameof(RightTime));
+                if (IsSex) SafeRaisePropertyChanged(nameof(RightSex));
                 if (IsPersonName)
                 {
-                    Raise(nameof(RightPN_Family));
-                    Raise(nameof(RightPN_Given));
-                    Raise(nameof(RightPN_Middle));
-                    Raise(nameof(RightPN_Prefix));
-                    Raise(nameof(RightPN_Suffix));
+                    SafeRaisePropertyChanged(nameof(RightPN_Family));
+                    SafeRaisePropertyChanged(nameof(RightPN_Given));
+                    SafeRaisePropertyChanged(nameof(RightPN_Middle));
+                    SafeRaisePropertyChanged(nameof(RightPN_Prefix));
+                    SafeRaisePropertyChanged(nameof(RightPN_Suffix));
                 }
             }
         }
 
-        // -------- Vergleich / Validierung --------
-        public bool IsDifferent
-            => !string.Equals(LeftValue?.Trim(), RightValue?.Trim(), StringComparison.OrdinalIgnoreCase);
-
-        private bool _isLeftInvalid;
-        public bool IsLeftInvalid
-        {
-            get => _isLeftInvalid;
-            private set { if (_isLeftInvalid == value) return; _isLeftInvalid = value; Raise(); }
-        }
-
-        private bool _isRightInvalid;
-        public bool IsRightInvalid
-        {
-            get => _isRightInvalid;
-            private set { if (_isRightInvalid == value) return; _isRightInvalid = value; Raise(); }
-        }
-
-        // -------- UI-State / Highlights --------
+        // --- UI-State --------------------------------------------------------
         private bool _isAlternate;
-        public bool IsAlternate { get => _isAlternate; set { if (_isAlternate == value) return; _isAlternate = value; Raise(); } }
+        public bool IsAlternate { get => _isAlternate; set { if (_isAlternate == value) return; _isAlternate = value; SafeRaisePropertyChanged(); } }
 
         private bool _isSelected;
-        public bool IsSelected  { get => _isSelected;  set { if (_isSelected  == value) return; _isSelected  = value; Raise(); } }
+        public bool IsSelected { get => _isSelected; set { if (_isSelected == value) return; _isSelected = value; SafeRaisePropertyChanged(); } }
 
-        private bool _isRowHighlighted;
-        public bool IsHighlighted { get => _isRowHighlighted; set { if (_isRowHighlighted == value) return; _isRowHighlighted = value; Raise(); } }
+        private bool _rowDiffHighlighted;
+        public bool IsHighlighted { get => _rowDiffHighlighted; set { if (_rowDiffHighlighted == value) return; _rowDiffHighlighted = value; SafeRaisePropertyChanged(); } }
+
+        // --- Validierung / Highlights ---------------------------------------
+        private bool _isLeftInvalid;
+        public bool IsLeftInvalid { get => _isLeftInvalid; private set { if (_isLeftInvalid == value) return; _isLeftInvalid = value; SafeRaisePropertyChanged(); } }
+
+        private bool _isRightInvalid;
+        public bool IsRightInvalid { get => _isRightInvalid; private set { if (_isRightInvalid == value) return; _isRightInvalid = value; SafeRaisePropertyChanged(); } }
 
         private bool _leftInvalidHighlighted;
-        public bool LeftInvalidHighlighted
-        {
-            get => _leftInvalidHighlighted;
-            set { if (_leftInvalidHighlighted == value) return; _leftInvalidHighlighted = value; Raise(); }
-        }
+        public bool LeftInvalidHighlighted { get => _leftInvalidHighlighted; set { if (_leftInvalidHighlighted == value) return; _leftInvalidHighlighted = value; SafeRaisePropertyChanged(); } }
 
         private bool _rightInvalidHighlighted;
-        public bool RightInvalidHighlighted
-        {
-            get => _rightInvalidHighlighted;
-            set { if (_rightInvalidHighlighted == value) return; _rightInvalidHighlighted = value; Raise(); }
-        }
+        public bool RightInvalidHighlighted { get => _rightInvalidHighlighted; set { if (_rightInvalidHighlighted == value) return; _rightInvalidHighlighted = value; SafeRaisePropertyChanged(); } }
 
-        // -------- Typ-Flags für Editorwahl (nur aus VR/Tag abgeleitet) --------
-        public bool IsDate       => string.Equals(Vr, "DA", StringComparison.OrdinalIgnoreCase);
-        public bool IsTime       => string.Equals(Vr, "TM", StringComparison.OrdinalIgnoreCase);
+        public bool IsDifferent =>
+            !string.Equals(_leftValue?.Trim(), _rightValue?.Trim(), StringComparison.OrdinalIgnoreCase);
+
+        // --- Typ-Flags (steuern die Editorwahl in der XAML) ------------------
+        public bool IsDate => string.Equals(Vr, "DA", StringComparison.OrdinalIgnoreCase);
+        public bool IsTime => string.Equals(Vr, "TM", StringComparison.OrdinalIgnoreCase);
         public bool IsPersonName => string.Equals(Vr, "PN", StringComparison.OrdinalIgnoreCase);
-        public bool IsSex        => string.Equals(TagId, "(0010,0040)", StringComparison.OrdinalIgnoreCase);
-        public bool IsNumeric    => string.Equals(Vr, "IS", StringComparison.OrdinalIgnoreCase) ||
+        public bool IsSex => string.Equals(TagId, "(0010,0040)", StringComparison.OrdinalIgnoreCase);
+        public bool IsNumeric => string.Equals(Vr, "IS", StringComparison.OrdinalIgnoreCase) ||
                                     string.Equals(Vr, "DS", StringComparison.OrdinalIgnoreCase);
-        public bool IsGeneric    => !(IsDate || IsTime || IsPersonName || IsSex || IsNumeric);
+        public bool IsGeneric => !(IsDate || IsTime || IsPersonName || IsSex || IsNumeric);
 
-        // -------- DA (Date) Wrapper --------
+        // --- DA (Date) als nullable Wrapper ---------------------------------
         public DateTime? LeftDate
         {
             get => HelperFunctions.DicomFormat.ParseDA(LeftValue);
             set
             {
                 var s = value.HasValue ? HelperFunctions.DicomFormat.FormatDA(value.Value) : string.Empty;
-                if (!string.Equals(LeftValue, s, StringComparison.Ordinal)) LeftValue = s;
-                Raise();
+                if (LeftValue != s) LeftValue = s;
             }
         }
 
@@ -161,20 +138,18 @@ namespace DViewer
             set
             {
                 var s = value.HasValue ? HelperFunctions.DicomFormat.FormatDA(value.Value) : string.Empty;
-                if (!string.Equals(RightValue, s, StringComparison.Ordinal)) RightValue = s;
-                Raise();
+                if (RightValue != s) RightValue = s;
             }
         }
 
-        // -------- TM (Time) Wrapper --------
+        // --- TM (Time) als nullable Wrapper ---------------------------------
         public TimeSpan? LeftTime
         {
             get => HelperFunctions.DicomFormat.ParseTM(LeftValue);
             set
             {
                 var s = value.HasValue ? HelperFunctions.DicomFormat.FormatTM(value.Value) : string.Empty;
-                if (!string.Equals(LeftValue, s, StringComparison.Ordinal)) LeftValue = s;
-                Raise();
+                if (LeftValue != s) LeftValue = s;
             }
         }
 
@@ -184,35 +159,24 @@ namespace DViewer
             set
             {
                 var s = value.HasValue ? HelperFunctions.DicomFormat.FormatTM(value.Value) : string.Empty;
-                if (!string.Equals(RightValue, s, StringComparison.Ordinal)) RightValue = s;
-                Raise();
+                if (RightValue != s) RightValue = s;
             }
         }
 
-        // -------- Sex (0010,0040) --------
+        // --- SEX (0010,0040): M/F/N/O/U -------------------------------------
         public string LeftSex
         {
             get => (LeftValue ?? string.Empty).Trim().ToUpperInvariant();
-            set
-            {
-                var v = (value ?? string.Empty).Trim().ToUpperInvariant();
-                if (!string.Equals(LeftValue, v, StringComparison.Ordinal)) LeftValue = v;
-                Raise();
-            }
+            set { var v = (value ?? string.Empty).Trim().ToUpperInvariant(); if (LeftValue != v) LeftValue = v; }
         }
 
         public string RightSex
         {
             get => (RightValue ?? string.Empty).Trim().ToUpperInvariant();
-            set
-            {
-                var v = (value ?? string.Empty).Trim().ToUpperInvariant();
-                if (!string.Equals(RightValue, v, StringComparison.Ordinal)) RightValue = v;
-                Raise();
-            }
+            set { var v = (value ?? string.Empty).Trim().ToUpperInvariant(); if (RightValue != v) RightValue = v; }
         }
 
-        // -------- PN (Person Name) Alphabetic-Komponente --------
+        // --- PN (Person Name) – Alphabetic-Komponente -----------------------
         public string LeftPN_Family
         {
             get => HelperFunctions.DicomFormat.ParsePNAlphabetic(LeftValue).Family;
@@ -221,10 +185,8 @@ namespace DViewer
                 var p = HelperFunctions.DicomFormat.ParsePNAlphabetic(LeftValue);
                 p.Family = value ?? string.Empty;
                 LeftValue = HelperFunctions.DicomFormat.FormatPNAlphabetic(p);
-                Raise();
             }
         }
-
         public string LeftPN_Given
         {
             get => HelperFunctions.DicomFormat.ParsePNAlphabetic(LeftValue).Given;
@@ -233,10 +195,8 @@ namespace DViewer
                 var p = HelperFunctions.DicomFormat.ParsePNAlphabetic(LeftValue);
                 p.Given = value ?? string.Empty;
                 LeftValue = HelperFunctions.DicomFormat.FormatPNAlphabetic(p);
-                Raise();
             }
         }
-
         public string LeftPN_Middle
         {
             get => HelperFunctions.DicomFormat.ParsePNAlphabetic(LeftValue).Middle;
@@ -245,10 +205,8 @@ namespace DViewer
                 var p = HelperFunctions.DicomFormat.ParsePNAlphabetic(LeftValue);
                 p.Middle = value ?? string.Empty;
                 LeftValue = HelperFunctions.DicomFormat.FormatPNAlphabetic(p);
-                Raise();
             }
         }
-
         public string LeftPN_Prefix
         {
             get => HelperFunctions.DicomFormat.ParsePNAlphabetic(LeftValue).Prefix;
@@ -257,10 +215,8 @@ namespace DViewer
                 var p = HelperFunctions.DicomFormat.ParsePNAlphabetic(LeftValue);
                 p.Prefix = value ?? string.Empty;
                 LeftValue = HelperFunctions.DicomFormat.FormatPNAlphabetic(p);
-                Raise();
             }
         }
-
         public string LeftPN_Suffix
         {
             get => HelperFunctions.DicomFormat.ParsePNAlphabetic(LeftValue).Suffix;
@@ -269,7 +225,6 @@ namespace DViewer
                 var p = HelperFunctions.DicomFormat.ParsePNAlphabetic(LeftValue);
                 p.Suffix = value ?? string.Empty;
                 LeftValue = HelperFunctions.DicomFormat.FormatPNAlphabetic(p);
-                Raise();
             }
         }
 
@@ -281,10 +236,8 @@ namespace DViewer
                 var p = HelperFunctions.DicomFormat.ParsePNAlphabetic(RightValue);
                 p.Family = value ?? string.Empty;
                 RightValue = HelperFunctions.DicomFormat.FormatPNAlphabetic(p);
-                Raise();
             }
         }
-
         public string RightPN_Given
         {
             get => HelperFunctions.DicomFormat.ParsePNAlphabetic(RightValue).Given;
@@ -293,10 +246,8 @@ namespace DViewer
                 var p = HelperFunctions.DicomFormat.ParsePNAlphabetic(RightValue);
                 p.Given = value ?? string.Empty;
                 RightValue = HelperFunctions.DicomFormat.FormatPNAlphabetic(p);
-                Raise();
             }
         }
-
         public string RightPN_Middle
         {
             get => HelperFunctions.DicomFormat.ParsePNAlphabetic(RightValue).Middle;
@@ -305,10 +256,8 @@ namespace DViewer
                 var p = HelperFunctions.DicomFormat.ParsePNAlphabetic(RightValue);
                 p.Middle = value ?? string.Empty;
                 RightValue = HelperFunctions.DicomFormat.FormatPNAlphabetic(p);
-                Raise();
             }
         }
-
         public string RightPN_Prefix
         {
             get => HelperFunctions.DicomFormat.ParsePNAlphabetic(RightValue).Prefix;
@@ -317,10 +266,8 @@ namespace DViewer
                 var p = HelperFunctions.DicomFormat.ParsePNAlphabetic(RightValue);
                 p.Prefix = value ?? string.Empty;
                 RightValue = HelperFunctions.DicomFormat.FormatPNAlphabetic(p);
-                Raise();
             }
         }
-
         public string RightPN_Suffix
         {
             get => HelperFunctions.DicomFormat.ParsePNAlphabetic(RightValue).Suffix;
@@ -329,14 +276,13 @@ namespace DViewer
                 var p = HelperFunctions.DicomFormat.ParsePNAlphabetic(RightValue);
                 p.Suffix = value ?? string.Empty;
                 RightValue = HelperFunctions.DicomFormat.FormatPNAlphabetic(p);
-                Raise();
             }
         }
 
-        // -------- INotify / Utilities --------
+        // --------------------------------------------------------------------
         public event PropertyChangedEventHandler? PropertyChanged;
 
-        private void Raise([CallerMemberName] string? name = null)
+        private void SafeRaisePropertyChanged([CallerMemberName] string? name = null)
         {
             if (string.IsNullOrEmpty(name)) return;
 
@@ -345,11 +291,6 @@ namespace DViewer
             else
                 MainThread.BeginInvokeOnMainThread(() =>
                     PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name)));
-        }
-
-        public void Dispose()
-        {
-            // aktuell nichts zu lösen – Platzhalter, damit MainViewModel sicher Dispose() rufen kann
         }
     }
 }
