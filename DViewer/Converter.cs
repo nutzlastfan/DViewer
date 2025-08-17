@@ -30,22 +30,37 @@ namespace DViewer
     }
 
 
+
+
+
     public sealed class NullableDateConverter : IValueConverter
     {
+        // DateTime?  -> DateTime (Picker braucht non-null)
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
-            => value is DateTime dt ? dt : DateTime.Today;           // Anzeige-Default
+        {
+            return value is DateTime dt ? dt : DateTime.Today;
+        }
 
+        // DateTime   -> DateTime? (zurück ins ViewModel)
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
-            => value is DateTime dt ? dt : null;                      // zurück ins DateTime?
+        {
+            return value is DateTime dt ? (DateTime?)dt : null;
+        }
     }
 
     public sealed class NullableTimeConverter : IValueConverter
     {
+        // TimeSpan? -> TimeSpan (Picker braucht non-null)
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
-            => value is TimeSpan ts ? ts : TimeSpan.Zero;             // Anzeige-Default 00:00:00
+        {
+            return value is TimeSpan ts ? ts : TimeSpan.Zero;
+        }
 
+        // TimeSpan  -> TimeSpan? (zurück ins ViewModel)
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
-            => value is TimeSpan ts ? ts : (TimeSpan?)null;           // zurück ins TimeSpan?
+        {
+            return value is TimeSpan ts ? (TimeSpan?)ts : null;
+        }
     }
 
     public class NullToBoolConverter : IValueConverter
