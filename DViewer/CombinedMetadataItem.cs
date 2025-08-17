@@ -8,12 +8,12 @@ namespace DViewer
 {
     public sealed class CombinedMetadataItem : INotifyPropertyChanged
     {
-        // --- Stammdaten ------------------------------------------------------
+        // --- Stammdaten ---
         public string TagId { get; init; } = string.Empty;
         public string Name { get; init; } = string.Empty;
         public string Vr { get; init; } = string.Empty;   // DICOM VR
 
-        // --- Werte (als DICOM-String) ---------------------------------------
+        // --- Werte (als DICOM-String) ---
         private string _leftValue = string.Empty;
         private string _rightValue = string.Empty;
 
@@ -22,29 +22,44 @@ namespace DViewer
             get => _leftValue;
             set
             {
-                var val = value ?? string.Empty;
-                if (_leftValue == val) return;
-                _leftValue = val;
+                if (value == null) value = string.Empty;
+                if (_leftValue == value) return;
 
-                // Validierung
-                IsLeftInvalid = !HelperFunctions.DicomValueValidator.IsValidValue(Vr, TagId, _leftValue);
+                // vor Änderung: IsDifferent alt merken
+                var oldDifferent = !string.Equals(_leftValue.Trim(), _rightValue.Trim(), StringComparison.OrdinalIgnoreCase);
 
-                // Abhängigkeiten (koalesziert melden)
-                SafeRaise(nameof(LeftValue));
-                SafeRaise(nameof(LeftText));
-                SafeRaise(nameof(IsDifferent));
+                _leftValue = value;
 
-                if (IsDate) SafeRaise(nameof(LeftDate));
-                if (IsTime) SafeRaise(nameof(LeftTime));
-                if (IsSex) SafeRaise(nameof(LeftSex));
+                // Validierung neu
+                var newLeftInvalid = !HelperFunctions.DicomValueValidator.IsValidValue(Vr, TagId, _leftValue);
+                if (_isLeftInvalid != newLeftInvalid)
+                {
+                    _isLeftInvalid = newLeftInvalid;
+                    SafeRaisePropertyChanged(nameof(IsLeftInvalid));
+                }
+
+                // LeftValue selbst
+                SafeRaisePropertyChanged(nameof(LeftValue));
+
+                // IsDifferent nur raisen, wenn sich das Ergebnis geändert hat
+                var newDifferent = !string.Equals(_leftValue.Trim(), _rightValue.Trim(), StringComparison.OrdinalIgnoreCase);
+                if (oldDifferent != newDifferent)
+                    SafeRaisePropertyChanged(nameof(IsDifferent));
+
+                // Abhängig abbildende Wrapper (nur 1x je Name dank Koaleszierung)
+                if (IsDate) SafeRaisePropertyChanged(nameof(LeftDate));
+                if (IsTime) SafeRaisePropertyChanged(nameof(LeftTime));
+                if (IsSex) SafeRaisePropertyChanged(nameof(LeftSex));
                 if (IsPersonName)
                 {
-                    SafeRaise(nameof(LeftPN_Family));
-                    SafeRaise(nameof(LeftPN_Given));
-                    SafeRaise(nameof(LeftPN_Middle));
-                    SafeRaise(nameof(LeftPN_Prefix));
-                    SafeRaise(nameof(LeftPN_Suffix));
+                    SafeRaisePropertyChanged(nameof(LeftPN_Family));
+                    SafeRaisePropertyChanged(nameof(LeftPN_Given));
+                    SafeRaisePropertyChanged(nameof(LeftPN_Middle));
+                    SafeRaisePropertyChanged(nameof(LeftPN_Prefix));
+                    SafeRaisePropertyChanged(nameof(LeftPN_Suffix));
                 }
+
+                FlushBatchIfNeeded();
             }
         }
 
@@ -53,130 +68,76 @@ namespace DViewer
             get => _rightValue;
             set
             {
-                var val = value ?? string.Empty;
-                if (_rightValue == val) return;
-                _rightValue = val;
+                if (value == null) value = string.Empty;
+                if (_rightValue == value) return;
 
-                IsRightInvalid = !HelperFunctions.DicomValueValidator.IsValidValue(Vr, TagId, _rightValue);
+                var oldDifferent = !string.Equals(_leftValue.Trim(), _rightValue.Trim(), StringComparison.OrdinalIgnoreCase);
 
-                SafeRaise(nameof(RightValue));
-                SafeRaise(nameof(RightText));
-                SafeRaise(nameof(IsDifferent));
+                _rightValue = value;
 
-                if (IsDate) SafeRaise(nameof(RightDate));
-                if (IsTime) SafeRaise(nameof(RightTime));
-                if (IsSex) SafeRaise(nameof(RightSex));
+                var newRightInvalid = !HelperFunctions.DicomValueValidator.IsValidValue(Vr, TagId, _rightValue);
+                if (_isRightInvalid != newRightInvalid)
+                {
+                    _isRightInvalid = newRightInvalid;
+                    SafeRaisePropertyChanged(nameof(IsRightInvalid));
+                }
+
+                SafeRaisePropertyChanged(nameof(RightValue));
+
+                var newDifferent = !string.Equals(_leftValue.Trim(), _rightValue.Trim(), StringComparison.OrdinalIgnoreCase);
+                if (oldDifferent != newDifferent)
+                    SafeRaisePropertyChanged(nameof(IsDifferent));
+
+                if (IsDate) SafeRaisePropertyChanged(nameof(RightDate));
+                if (IsTime) SafeRaisePropertyChanged(nameof(RightTime));
+                if (IsSex) SafeRaisePropertyChanged(nameof(RightSex));
                 if (IsPersonName)
                 {
-                    SafeRaise(nameof(RightPN_Family));
-                    SafeRaise(nameof(RightPN_Given));
-                    SafeRaise(nameof(RightPN_Middle));
-                    SafeRaise(nameof(RightPN_Prefix));
-                    SafeRaise(nameof(RightPN_Suffix));
+                    SafeRaisePropertyChanged(nameof(RightPN_Family));
+                    SafeRaisePropertyChanged(nameof(RightPN_Given));
+                    SafeRaisePropertyChanged(nameof(RightPN_Middle));
+                    SafeRaisePropertyChanged(nameof(RightPN_Prefix));
+                    SafeRaisePropertyChanged(nameof(RightPN_Suffix));
                 }
+
+                FlushBatchIfNeeded();
             }
         }
 
-        // --- Anzeige-Text je Seite (für Sort/Filter im VM) ------------------
-        public string LeftText => GetDisplayText(_leftValue);
-        public string RightText => GetDisplayText(_rightValue);
-
-        private string GetDisplayText(string raw)
-        {
-            if (string.IsNullOrEmpty(raw)) return string.Empty;
-
-            if (IsDate)
-            {
-                var d = HelperFunctions.DicomFormat.ParseDA(raw);
-                return d.HasValue ? d.Value.ToString("dd.MM.yyyy") : string.Empty;
-            }
-
-            if (IsTime)
-            {
-                var t = HelperFunctions.DicomFormat.ParseTM(raw);
-                return t.HasValue ? t.Value.ToString(@"hh\:mm\:ss") : string.Empty;
-            }
-
-            if (IsPersonName)
-            {
-                var pn = HelperFunctions.DicomFormat.ParsePNAlphabetic(raw);
-                var parts = new List<string>(5);
-                if (!string.IsNullOrWhiteSpace(pn.Family)) parts.Add(pn.Family);
-                if (!string.IsNullOrWhiteSpace(pn.Given)) parts.Add(pn.Given);
-                if (!string.IsNullOrWhiteSpace(pn.Middle)) parts.Add(pn.Middle);
-                if (!string.IsNullOrWhiteSpace(pn.Prefix)) parts.Add(pn.Prefix);
-                if (!string.IsNullOrWhiteSpace(pn.Suffix)) parts.Add(pn.Suffix);
-                return string.Join(" ", parts);
-            }
-
-            // Sex / Numeric / Generic: Rohwert anzeigen
-            return raw;
-        }
-
-        // --- UI-State --------------------------------------------------------
+        // --- UI-State ---
         private bool _isAlternate;
-        public bool IsAlternate
-        {
-            get => _isAlternate;
-            set { if (_isAlternate == value) return; _isAlternate = value; SafeRaise(); }
-        }
+        public bool IsAlternate { get => _isAlternate; set => Set(ref _isAlternate, value); }
 
         private bool _isSelected;
-        public bool IsSelected
-        {
-            get => _isSelected;
-            set { if (_isSelected == value) return; _isSelected = value; SafeRaise(); }
-        }
+        public bool IsSelected { get => _isSelected; set => Set(ref _isSelected, value); }
 
         private bool _rowDiffHighlighted;
-        public bool IsHighlighted
-        {
-            get => _rowDiffHighlighted;
-            set { if (_rowDiffHighlighted == value) return; _rowDiffHighlighted = value; SafeRaise(); }
-        }
+        public bool IsHighlighted { get => _rowDiffHighlighted; set => Set(ref _rowDiffHighlighted, value); }
 
-        // --- Validierung / Highlights ---------------------------------------
-        public bool IsDifferent =>
-            !string.Equals(_leftValue?.Trim(), _rightValue?.Trim(), StringComparison.OrdinalIgnoreCase);
+        // --- Validierung/Highlights ---
+        public bool IsDifferent => !string.Equals(_leftValue?.Trim(), _rightValue?.Trim(), StringComparison.OrdinalIgnoreCase);
 
         private bool _isLeftInvalid;
-        public bool IsLeftInvalid
-        {
-            get => _isLeftInvalid;
-            private set { if (_isLeftInvalid == value) return; _isLeftInvalid = value; SafeRaise(); }
-        }
+        public bool IsLeftInvalid { get => _isLeftInvalid; private set => Set(ref _isLeftInvalid, value); }
 
         private bool _isRightInvalid;
-        public bool IsRightInvalid
-        {
-            get => _isRightInvalid;
-            private set { if (_isRightInvalid == value) return; _isRightInvalid = value; SafeRaise(); }
-        }
+        public bool IsRightInvalid { get => _isRightInvalid; private set => Set(ref _isRightInvalid, value); }
 
         private bool _leftInvalidHighlighted;
-        public bool LeftInvalidHighlighted
-        {
-            get => _leftInvalidHighlighted;
-            set { if (_leftInvalidHighlighted == value) return; _leftInvalidHighlighted = value; SafeRaise(); }
-        }
+        public bool LeftInvalidHighlighted { get => _leftInvalidHighlighted; set => Set(ref _leftInvalidHighlighted, value); }
 
         private bool _rightInvalidHighlighted;
-        public bool RightInvalidHighlighted
-        {
-            get => _rightInvalidHighlighted;
-            set { if (_rightInvalidHighlighted == value) return; _rightInvalidHighlighted = value; SafeRaise(); }
-        }
+        public bool RightInvalidHighlighted { get => _rightInvalidHighlighted; set => Set(ref _rightInvalidHighlighted, value); }
 
-        // --- Typflags --------------------------------------------------------
+        // --- Typflags ---
         public bool IsDate => string.Equals(Vr, "DA", StringComparison.OrdinalIgnoreCase);
         public bool IsTime => string.Equals(Vr, "TM", StringComparison.OrdinalIgnoreCase);
         public bool IsPersonName => string.Equals(Vr, "PN", StringComparison.OrdinalIgnoreCase);
         public bool IsSex => string.Equals(TagId, "(0010,0040)", StringComparison.OrdinalIgnoreCase);
-        public bool IsNumeric => string.Equals(Vr, "IS", StringComparison.OrdinalIgnoreCase)
-                                 || string.Equals(Vr, "DS", StringComparison.OrdinalIgnoreCase);
+        public bool IsNumeric => string.Equals(Vr, "IS", StringComparison.OrdinalIgnoreCase) || string.Equals(Vr, "DS", StringComparison.OrdinalIgnoreCase);
         public bool IsGeneric => !(IsDate || IsTime || IsPersonName || IsSex || IsNumeric);
 
-        // --- DA (Date) -------------------------------------------------------
+        // --- DA (nullable) ---
         public DateTime? LeftDate
         {
             get => HelperFunctions.DicomFormat.ParseDA(LeftValue);
@@ -186,7 +147,6 @@ namespace DViewer
                 if (LeftValue != s) LeftValue = s;
             }
         }
-
         public DateTime? RightDate
         {
             get => HelperFunctions.DicomFormat.ParseDA(RightValue);
@@ -197,7 +157,7 @@ namespace DViewer
             }
         }
 
-        // --- TM (Time) -------------------------------------------------------
+        // --- TM (nullable) ---
         public TimeSpan? LeftTime
         {
             get => HelperFunctions.DicomFormat.ParseTM(LeftValue);
@@ -207,7 +167,6 @@ namespace DViewer
                 if (LeftValue != s) LeftValue = s;
             }
         }
-
         public TimeSpan? RightTime
         {
             get => HelperFunctions.DicomFormat.ParseTM(RightValue);
@@ -218,118 +177,91 @@ namespace DViewer
             }
         }
 
-        // --- SEX (0010,0040) -------------------------------------------------
+        // --- Sex ---
         public string LeftSex
         {
             get => (LeftValue ?? string.Empty).Trim().ToUpperInvariant();
-            set
-            {
-                var v = (value ?? string.Empty).Trim().ToUpperInvariant();
-                if (LeftValue != v) LeftValue = v;
-            }
+            set { var v = (value ?? string.Empty).Trim().ToUpperInvariant(); if (LeftValue != v) LeftValue = v; }
         }
-
         public string RightSex
         {
             get => (RightValue ?? string.Empty).Trim().ToUpperInvariant();
-            set
+            set { var v = (value ?? string.Empty).Trim().ToUpperInvariant(); if (RightValue != v) RightValue = v; }
+        }
+
+        // --- PN (Alphabetic) ---
+        public string LeftPN_Family { get => HelperFunctions.DicomFormat.ParsePNAlphabetic(LeftValue).Family; set { var p = HelperFunctions.DicomFormat.ParsePNAlphabetic(LeftValue); p.Family = value ?? ""; LeftValue = HelperFunctions.DicomFormat.FormatPNAlphabetic(p); } }
+        public string LeftPN_Given { get => HelperFunctions.DicomFormat.ParsePNAlphabetic(LeftValue).Given; set { var p = HelperFunctions.DicomFormat.ParsePNAlphabetic(LeftValue); p.Given = value ?? ""; LeftValue = HelperFunctions.DicomFormat.FormatPNAlphabetic(p); } }
+        public string LeftPN_Middle { get => HelperFunctions.DicomFormat.ParsePNAlphabetic(LeftValue).Middle; set { var p = HelperFunctions.DicomFormat.ParsePNAlphabetic(LeftValue); p.Middle = value ?? ""; LeftValue = HelperFunctions.DicomFormat.FormatPNAlphabetic(p); } }
+        public string LeftPN_Prefix { get => HelperFunctions.DicomFormat.ParsePNAlphabetic(LeftValue).Prefix; set { var p = HelperFunctions.DicomFormat.ParsePNAlphabetic(LeftValue); p.Prefix = value ?? ""; LeftValue = HelperFunctions.DicomFormat.FormatPNAlphabetic(p); } }
+        public string LeftPN_Suffix { get => HelperFunctions.DicomFormat.ParsePNAlphabetic(LeftValue).Suffix; set { var p = HelperFunctions.DicomFormat.ParsePNAlphabetic(LeftValue); p.Suffix = value ?? ""; LeftValue = HelperFunctions.DicomFormat.FormatPNAlphabetic(p); } }
+
+        public string RightPN_Family { get => HelperFunctions.DicomFormat.ParsePNAlphabetic(RightValue).Family; set { var p = HelperFunctions.DicomFormat.ParsePNAlphabetic(RightValue); p.Family = value ?? ""; RightValue = HelperFunctions.DicomFormat.FormatPNAlphabetic(p); } }
+        public string RightPN_Given { get => HelperFunctions.DicomFormat.ParsePNAlphabetic(RightValue).Given; set { var p = HelperFunctions.DicomFormat.ParsePNAlphabetic(RightValue); p.Given = value ?? ""; RightValue = HelperFunctions.DicomFormat.FormatPNAlphabetic(p); } }
+        public string RightPN_Middle { get => HelperFunctions.DicomFormat.ParsePNAlphabetic(RightValue).Middle; set { var p = HelperFunctions.DicomFormat.ParsePNAlphabetic(RightValue); p.Middle = value ?? ""; RightValue = HelperFunctions.DicomFormat.FormatPNAlphabetic(p); } }
+        public string RightPN_Prefix { get => HelperFunctions.DicomFormat.ParsePNAlphabetic(RightValue).Prefix; set { var p = HelperFunctions.DicomFormat.ParsePNAlphabetic(RightValue); p.Prefix = value ?? ""; RightValue = HelperFunctions.DicomFormat.FormatPNAlphabetic(p); } }
+        public string RightPN_Suffix { get => HelperFunctions.DicomFormat.ParsePNAlphabetic(RightValue).Suffix; set { var p = HelperFunctions.DicomFormat.ParsePNAlphabetic(RightValue); p.Suffix = value ?? ""; RightValue = HelperFunctions.DicomFormat.FormatPNAlphabetic(p); } }
+
+        // --- Koaleszierung / Batch ---
+        private int _batchDepth = 0;
+        private readonly HashSet<string> _batchedProps = new(StringComparer.Ordinal);
+
+        /// <summary>Beginnt einen Batch; beim Dispose werden die gesammelten PropertyChanged-Events (je Property exakt 1x) auf dem UI-Thread gefeuert.</summary>
+        public IDisposable BeginBatch() => new BatchScope(this);
+
+        private sealed class BatchScope : IDisposable
+        {
+            private readonly CombinedMetadataItem _owner;
+            private bool _disposed;
+            public BatchScope(CombinedMetadataItem owner) { _owner = owner; _owner._batchDepth++; }
+            public void Dispose()
             {
-                var v = (value ?? string.Empty).Trim().ToUpperInvariant();
-                if (RightValue != v) RightValue = v;
+                if (_disposed) return;
+                _disposed = true;
+                _owner._batchDepth--;
+                _owner.FlushBatchIfNeeded();
             }
         }
 
-        // --- PN (Alphabetic) -------------------------------------------------
-        public string LeftPN_Family
+        private void FlushBatchIfNeeded()
         {
-            get => HelperFunctions.DicomFormat.ParsePNAlphabetic(LeftValue).Family;
-            set { var p = HelperFunctions.DicomFormat.ParsePNAlphabetic(LeftValue); p.Family = value ?? ""; LeftValue = HelperFunctions.DicomFormat.FormatPNAlphabetic(p); }
-        }
-        public string LeftPN_Given
-        {
-            get => HelperFunctions.DicomFormat.ParsePNAlphabetic(LeftValue).Given;
-            set { var p = HelperFunctions.DicomFormat.ParsePNAlphabetic(LeftValue); p.Given = value ?? ""; LeftValue = HelperFunctions.DicomFormat.FormatPNAlphabetic(p); }
-        }
-        public string LeftPN_Middle
-        {
-            get => HelperFunctions.DicomFormat.ParsePNAlphabetic(LeftValue).Middle;
-            set { var p = HelperFunctions.DicomFormat.ParsePNAlphabetic(LeftValue); p.Middle = value ?? ""; LeftValue = HelperFunctions.DicomFormat.FormatPNAlphabetic(p); }
-        }
-        public string LeftPN_Prefix
-        {
-            get => HelperFunctions.DicomFormat.ParsePNAlphabetic(LeftValue).Prefix;
-            set { var p = HelperFunctions.DicomFormat.ParsePNAlphabetic(LeftValue); p.Prefix = value ?? ""; LeftValue = HelperFunctions.DicomFormat.FormatPNAlphabetic(p); }
-        }
-        public string LeftPN_Suffix
-        {
-            get => HelperFunctions.DicomFormat.ParsePNAlphabetic(LeftValue).Suffix;
-            set { var p = HelperFunctions.DicomFormat.ParsePNAlphabetic(LeftValue); p.Suffix = value ?? ""; LeftValue = HelperFunctions.DicomFormat.FormatPNAlphabetic(p); }
+            if (_batchDepth > 0) return;
+            if (_batchedProps.Count == 0) return;
+
+            var toRaise = new List<string>(_batchedProps);
+            _batchedProps.Clear();
+
+            void RaiseAll()
+            {
+                foreach (var p in toRaise)
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(p));
+            }
+
+            if (MainThread.IsMainThread) RaiseAll();
+            else MainThread.BeginInvokeOnMainThread(RaiseAll);
         }
 
-        public string RightPN_Family
-        {
-            get => HelperFunctions.DicomFormat.ParsePNAlphabetic(RightValue).Family;
-            set { var p = HelperFunctions.DicomFormat.ParsePNAlphabetic(RightValue); p.Family = value ?? ""; RightValue = HelperFunctions.DicomFormat.FormatPNAlphabetic(p); }
-        }
-        public string RightPN_Given
-        {
-            get => HelperFunctions.DicomFormat.ParsePNAlphabetic(RightValue).Given;
-            set { var p = HelperFunctions.DicomFormat.ParsePNAlphabetic(RightValue); p.Given = value ?? ""; RightValue = HelperFunctions.DicomFormat.FormatPNAlphabetic(p); }
-        }
-        public string RightPN_Middle
-        {
-            get => HelperFunctions.DicomFormat.ParsePNAlphabetic(RightValue).Middle;
-            set { var p = HelperFunctions.DicomFormat.ParsePNAlphabetic(RightValue); p.Middle = value ?? ""; RightValue = HelperFunctions.DicomFormat.FormatPNAlphabetic(p); }
-        }
-        public string RightPN_Prefix
-        {
-            get => HelperFunctions.DicomFormat.ParsePNAlphabetic(RightValue).Prefix;
-            set { var p = HelperFunctions.DicomFormat.ParsePNAlphabetic(RightValue); p.Prefix = value ?? ""; RightValue = HelperFunctions.DicomFormat.FormatPNAlphabetic(p); }
-        }
-        public string RightPN_Suffix
-        {
-            get => HelperFunctions.DicomFormat.ParsePNAlphabetic(RightValue).Suffix;
-            set { var p = HelperFunctions.DicomFormat.ParsePNAlphabetic(RightValue); p.Suffix = value ?? ""; RightValue = HelperFunctions.DicomFormat.FormatPNAlphabetic(p); }
-        }
-
-        // --------------------------------------------------------------------
-        public event PropertyChangedEventHandler? PropertyChanged;
-
-        // === Koaleszierter PropertyChanged-Dispatcher ========================
-        private readonly HashSet<string> _pendingProps = new(StringComparer.Ordinal);
-        private bool _dispatchScheduled;
-
-        private void SafeRaise([CallerMemberName] string? name = null)
+        private void SafeRaisePropertyChanged([CallerMemberName] string? name = null)
         {
             if (string.IsNullOrEmpty(name)) return;
-
-            lock (_pendingProps)
+            if (_batchDepth > 0)
             {
-                _pendingProps.Add(name);
-                if (_dispatchScheduled) return;
-                _dispatchScheduled = true;
-
-                MainThread.BeginInvokeOnMainThread(FlushPropertyChangedQueue);
+                _batchedProps.Add(name);
+                return;
             }
+
+            void Raise() => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+            if (MainThread.IsMainThread) Raise();
+            else MainThread.BeginInvokeOnMainThread(Raise);
         }
 
-        private void FlushPropertyChangedQueue()
+        private void Set<T>(ref T field, T value, [CallerMemberName] string? name = null)
         {
-            string[] toRaise;
-            lock (_pendingProps)
-            {
-                _dispatchScheduled = false;
-                if (_pendingProps.Count == 0) return;
-                toRaise = new string[_pendingProps.Count];
-                _pendingProps.CopyTo(toRaise);
-                _pendingProps.Clear();
-            }
-
-            var handler = PropertyChanged;
-            if (handler == null) return;
-
-            foreach (var p in toRaise)
-                handler(this, new PropertyChangedEventArgs(p));
+            if (EqualityComparer<T>.Default.Equals(field, value)) return;
+            field = value;
+            SafeRaisePropertyChanged(name);
         }
+
+        public event PropertyChangedEventHandler? PropertyChanged;
     }
 }
