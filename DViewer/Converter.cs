@@ -59,16 +59,45 @@ namespace DViewer
     }
 
     // ====== Nur zurückschreiben, wenn Entry fokussiert ist ======
+    /// <summary>
+    /// Zeigt immer den aktuellen String an (Convert),
+    /// schreibt aber nur dann in die Source zurück (ConvertBack),
+    /// wenn das gebundene Entry fokussiert ist (ConverterParameter = IsFocused).
+    /// </summary>
     public sealed class OnlyWhenFocusedConverter : IValueConverter
     {
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
-            => value?.ToString() ?? string.Empty;
+        {
+            // Niemals DoNothing/UnsetValue ins Target schicken -> immer String anzeigen
+            return value switch
+            {
+                null => string.Empty,
+                string s => s,
+                _ => value.ToString() ?? string.Empty
+            };
+        }
 
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
         {
-            var isFocused = parameter is bool b && b;
-            if (!isFocused) return Binding.DoNothing;
-            return value?.ToString() ?? string.Empty;
+            // ConverterParameter ist die IsFocused-Bindung des Entry
+            bool isFocused = parameter switch
+            {
+                bool b => b,
+                string s when bool.TryParse(s, out var p) => p,
+                _ => false
+            };
+
+            // Kein Zurückschreiben, wenn nicht fokussiert
+            if (!isFocused)
+                return Binding.DoNothing;
+
+            // Zurückschreiben als String (niemals ein Objekt)
+            return value switch
+            {
+                null => string.Empty,
+                string s => s,
+                _ => value.ToString() ?? string.Empty
+            };
         }
     }
 
@@ -144,6 +173,9 @@ namespace DViewer
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
             => throw new NotSupportedException();
     }
+
+
+
 
     /// <summary>
     /// Komfort-Variante: true, wenn NICHT null/leer.
