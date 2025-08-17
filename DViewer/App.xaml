@@ -6,14 +6,16 @@
     <Application.Resources>
         <ResourceDictionary>
 
-            <!--<OnPlatform x:Key="MDL2" x:TypeArguments="x:String">
-                <On Platform="WinUI" Value="Segoe MDL2 Assets" />
-                <On Platform="Android,iOS,MacCatalyst" Value="" />
-            </OnPlatform>-->
+            <local:NullableDateConverter x:Key="NullableDateConverter" />
+            <local:NullableTimeConverter x:Key="NullableTimeConverter" />
+            <local:OnlyWhenFocusedConverter x:Key="OnlyWhenFocusedConverter" />
+            <local:DoubleToGridLengthConverter x:Key="DoubleToGridLengthConverter" />
+            <local:StarConverter x:Key="StarConverter" />
+            <local:AlternateBackgroundConverter x:Key="AltBgConverter" />
             <local:FormatDateDisplayConverter x:Key="FormatDateDisplayConverter" />
             <local:FormatTimeDisplayConverter x:Key="FormatTimeDisplayConverter" />
-            <local:NullableDateConverter x:Key="NullableDateConverter" />
-                <local:NullableTimeConverter x:Key="NullableTimeConverter" />
+            <local:NullToBoolConverter x:Key="NullToBoolConverter" />
+            <local:NotNullToBoolConverter x:Key="NotNullToBoolConverter" />
             <ResourceDictionary.MergedDictionaries>
 
                 <ResourceDictionary Source="Resources/Styles/Colors.xaml" />

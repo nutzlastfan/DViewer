@@ -14,7 +14,7 @@
         <ResourceDictionary>
             <local:DoubleToGridLengthConverter x:Key="StarConverter" />
             <local:AlternateBackgroundConverter x:Key="AltBgConverter" />
-            <local:NullToBoolConverter x:Key="NullToBoolConverter" />
+            <!--<local:NullToBoolConverter x:Key="NullToBoolConverter" />-->
         </ResourceDictionary>
     </ContentPage.Resources>
 
@@ -263,7 +263,6 @@
         </Grid>
 
         <!-- Row 3: Vergleichstabelle -->
-        <!-- Row 3: Vergleichstabelle -->
         <CollectionView Grid.Row="3"
                 ItemsSource="{Binding CombinedMetadataList}"
                 SelectionMode="Single"
@@ -279,7 +278,7 @@
                 <DataTemplate>
                     <Grid Padding="0" ColumnSpacing="1" HorizontalOptions="Fill">
 
-                        <!-- Zell-Styles -->
+                        <!-- Styles -->
                         <Grid.Resources>
                             <Style x:Key="CellLabel" TargetType="Label" BasedOn="{x:Null}">
                                 <Setter Property="VerticalTextAlignment" Value="Center" />
@@ -321,7 +320,7 @@
                             </Style>
                         </Grid.Style>
 
-                        <!-- Spaltenbreiten -->
+                        <!-- *** WICHTIG: Spaltenbreiten wieder rein *** -->
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="{Binding Source={x:Reference RootPage}, Path=BindingContext.TagWidth,   Converter={StaticResource StarConverter}, Mode=OneWay}" />
                             <ColumnDefinition Width="{Binding Source={x:Reference RootPage}, Path=BindingContext.NameWidth,  Converter={StaticResource StarConverter}, Mode=OneWay}" />
@@ -350,19 +349,40 @@
                             </BoxView.Triggers>
                         </BoxView>
 
-                        <!-- Spalte 0/1: Labels -->
+                        <!-- *** Labels für Spalte 0/1 *** -->
                         <Label Grid.Column="0" Style="{StaticResource CellLabel}" Text="{Binding TagId}" />
                         <Label Grid.Column="1" Style="{StaticResource CellLabel}" Text="{Binding Name}" />
 
                         <!-- ===== Spalte 2 (Links) ===== -->
+
                         <!-- PN -->
                         <Grid Grid.Column="2" IsVisible="{Binding IsPersonName}"
               ColumnDefinitions="2*,2*,*,Auto,Auto" ColumnSpacing="4">
-                            <Entry Grid.Column="0" Style="{StaticResource CellEntry}" Placeholder="Nachname" Text="{Binding LeftPN_Family, Mode=TwoWay}" />
-                            <Entry Grid.Column="1" Style="{StaticResource CellEntry}" Placeholder="Vorname"  Text="{Binding LeftPN_Given,  Mode=TwoWay}" />
-                            <Entry Grid.Column="2" Style="{StaticResource CellEntry}" Placeholder="Mittel"   Text="{Binding LeftPN_Middle, Mode=TwoWay}" />
-                            <Entry Grid.Column="3" Style="{StaticResource CellEntry}" Placeholder="Präfix"   WidthRequest="70" Text="{Binding LeftPN_Prefix, Mode=TwoWay}" />
-                            <Entry Grid.Column="4" Style="{StaticResource CellEntry}" Placeholder="Suffix"   WidthRequest="70" Text="{Binding LeftPN_Suffix, Mode=TwoWay}" />
+                            <Entry x:Name="LeftPnFamily" Grid.Column="0" Style="{StaticResource CellEntry}"
+                 Placeholder="Nachname"
+                 Text="{Binding LeftPN_Family, Mode=TwoWay,
+                                Converter={StaticResource OnlyWhenFocusedConverter},
+                                ConverterParameter={Binding Source={x:Reference LeftPnFamily}, Path=IsFocused}}" />
+                            <Entry x:Name="LeftPnGiven" Grid.Column="1" Style="{StaticResource CellEntry}"
+                 Placeholder="Vorname"
+                 Text="{Binding LeftPN_Given, Mode=TwoWay,
+                                Converter={StaticResource OnlyWhenFocusedConverter},
+                                ConverterParameter={Binding Source={x:Reference LeftPnGiven}, Path=IsFocused}}" />
+                            <Entry x:Name="LeftPnMiddle" Grid.Column="2" Style="{StaticResource CellEntry}"
+                 Placeholder="Mittel"
+                 Text="{Binding LeftPN_Middle, Mode=TwoWay,
+                                Converter={StaticResource OnlyWhenFocusedConverter},
+                                ConverterParameter={Binding Source={x:Reference LeftPnMiddle}, Path=IsFocused}}" />
+                            <Entry x:Name="LeftPnPrefix" Grid.Column="3" Style="{StaticResource CellEntry}"
+                 Placeholder="Präfix" WidthRequest="70"
+                 Text="{Binding LeftPN_Prefix, Mode=TwoWay,
+                                Converter={StaticResource OnlyWhenFocusedConverter},
+                                ConverterParameter={Binding Source={x:Reference LeftPnPrefix}, Path=IsFocused}}" />
+                            <Entry x:Name="LeftPnSuffix" Grid.Column="4" Style="{StaticResource CellEntry}"
+                 Placeholder="Suffix" WidthRequest="70"
+                 Text="{Binding LeftPN_Suffix, Mode=TwoWay,
+                                Converter={StaticResource OnlyWhenFocusedConverter},
+                                ConverterParameter={Binding Source={x:Reference LeftPnSuffix}, Path=IsFocused}}" />
                         </Grid>
 
                         <!-- Sex -->
@@ -370,20 +390,14 @@
                 ItemsSource="{Binding Source={x:Reference RootPage}, Path=BindingContext.SexOptions}"
                 SelectedItem="{Binding LeftSex, Mode=TwoWay}"
                 IsVisible="{Binding IsSex}"
-                HorizontalOptions="Fill"
-                Margin="0,0,8,0"
-                TextColor="Black"
-                TitleColor="Black" />
+                HorizontalOptions="Fill" Margin="0,0,8,0"
+                TextColor="Black" TitleColor="Black" />
 
-                        <!-- LINKS: Datum (Anzeige + klickbarer Picker) -->
+                        <!-- LINKS: Datum -->
                         <Grid Grid.Column="2" IsVisible="{Binding IsDate}" ColumnSpacing="0">
                             <HorizontalStackLayout Grid.ColumnSpan="2" Spacing="6" Padding="8,0,8,0">
-                                <Label VerticalTextAlignment="Center" TextColor="Black" FontSize="13">
-                                    <Label.Text>
-                                        <Binding Path="LeftDate" TargetNullValue="" FallbackValue=""
-                         StringFormat="{}{0:dd.MM.yyyy}" />
-                                    </Label.Text>
-                                </Label>
+                                <Label Text="{Binding LeftDate, StringFormat='{}{0:dd.MM.yyyy}'}"
+                   VerticalTextAlignment="Center" TextColor="Black" FontSize="13" />
                                 <Image Source="calendar_16.png" HeightRequest="14" WidthRequest="14" VerticalOptions="Center" />
                             </HorizontalStackLayout>
 
@@ -402,12 +416,8 @@
                         <!-- LINKS: Zeit -->
                         <Grid Grid.Column="2" IsVisible="{Binding IsTime}" ColumnSpacing="0">
                             <HorizontalStackLayout Grid.ColumnSpan="2" Spacing="6" Padding="8,0,8,0">
-                                <Label VerticalTextAlignment="Center" TextColor="Black" FontSize="13">
-                                    <Label.Text>
-                                        <Binding Path="LeftTime" TargetNullValue="" FallbackValue=""
-                         StringFormat="{}{0:HH\\:mm\\:ss}" />
-                                    </Label.Text>
-                                </Label>
+                                <Label Text="{Binding LeftTime, StringFormat='{}{0:HH\\:mm\\:ss}'}"
+                   VerticalTextAlignment="Center" TextColor="Black" FontSize="13" />
                                 <Image Source="clock_16.png" HeightRequest="14" WidthRequest="14" VerticalOptions="Center" />
                             </HorizontalStackLayout>
 
@@ -423,26 +433,51 @@
                             </TimePicker>
                         </Grid>
 
-                        <!-- Numeric -->
-                        <Entry Grid.Column="2" Style="{StaticResource CellEntry}"
+                        <!-- Numeric (links) -->
+                        <Entry x:Name="LeftNumeric" Grid.Column="2" Style="{StaticResource CellEntry}"
                Keyboard="Numeric"
-               Text="{Binding LeftValue, Mode=TwoWay}"
+               Text="{Binding LeftValue, Mode=TwoWay,
+                              Converter={StaticResource OnlyWhenFocusedConverter},
+                              ConverterParameter={Binding Source={x:Reference LeftNumeric}, Path=IsFocused}}"
                IsVisible="{Binding IsNumeric}" />
 
-                        <!-- Generic -->
-                        <Entry Grid.Column="2" Style="{StaticResource CellEntry}"
-               Text="{Binding LeftValue, Mode=TwoWay}"
+                        <!-- Generic (links) -->
+                        <Entry x:Name="LeftGeneric" Grid.Column="2" Style="{StaticResource CellEntry}"
+               Text="{Binding LeftValue, Mode=TwoWay,
+                              Converter={StaticResource OnlyWhenFocusedConverter},
+                              ConverterParameter={Binding Source={x:Reference LeftGeneric}, Path=IsFocused}}"
                IsVisible="{Binding IsGeneric}" />
 
                         <!-- ===== Spalte 3 (Rechts) ===== -->
-                        <!-- PN -->
+
+                        <!-- PN rechts -->
                         <Grid Grid.Column="3" IsVisible="{Binding IsPersonName}"
               ColumnDefinitions="2*,2*,*,Auto,Auto" ColumnSpacing="4">
-                            <Entry Grid.Column="0" Style="{StaticResource CellEntry}" Placeholder="Nachname" Text="{Binding RightPN_Family, Mode=TwoWay}" />
-                            <Entry Grid.Column="1" Style="{StaticResource CellEntry}" Placeholder="Vorname"  Text="{Binding RightPN_Given,  Mode=TwoWay}" />
-                            <Entry Grid.Column="2" Style="{StaticResource CellEntry}" Placeholder="Mittel"   Text="{Binding RightPN_Middle, Mode=TwoWay}" />
-                            <Entry Grid.Column="3" Style="{StaticResource CellEntry}" Placeholder="Präfix"   WidthRequest="70" Text="{Binding RightPN_Prefix, Mode=TwoWay}" />
-                            <Entry Grid.Column="4" Style="{StaticResource CellEntry}" Placeholder="Suffix"   WidthRequest="70" Text="{Binding RightPN_Suffix, Mode=TwoWay}" />
+                            <Entry x:Name="RightPnFamily" Grid.Column="0" Style="{StaticResource CellEntry}"
+                 Placeholder="Nachname"
+                 Text="{Binding RightPN_Family, Mode=TwoWay,
+                                Converter={StaticResource OnlyWhenFocusedConverter},
+                                ConverterParameter={Binding Source={x:Reference RightPnFamily}, Path=IsFocused}}" />
+                            <Entry x:Name="RightPnGiven" Grid.Column="1" Style="{StaticResource CellEntry}"
+                 Placeholder="Vorname"
+                 Text="{Binding RightPN_Given, Mode=TwoWay,
+                                Converter={StaticResource OnlyWhenFocusedConverter},
+                                ConverterParameter={Binding Source={x:Reference RightPnGiven}, Path=IsFocused}}" />
+                            <Entry x:Name="RightPnMiddle" Grid.Column="2" Style="{StaticResource CellEntry}"
+                 Placeholder="Mittel"
+                 Text="{Binding RightPN_Middle, Mode=TwoWay,
+                                Converter={StaticResource OnlyWhenFocusedConverter},
+                                ConverterParameter={Binding Source={x:Reference RightPnMiddle}, Path=IsFocused}}" />
+                            <Entry x:Name="RightPnPrefix" Grid.Column="3" Style="{StaticResource CellEntry}"
+                 Placeholder="Präfix" WidthRequest="70"
+                 Text="{Binding RightPN_Prefix, Mode=TwoWay,
+                                Converter={StaticResource OnlyWhenFocusedConverter},
+                                ConverterParameter={Binding Source={x:Reference RightPnPrefix}, Path=IsFocused}}" />
+                            <Entry x:Name="RightPnSuffix" Grid.Column="4" Style="{StaticResource CellEntry}"
+                 Placeholder="Suffix" WidthRequest="70"
+                 Text="{Binding RightPN_Suffix, Mode=TwoWay,
+                                Converter={StaticResource OnlyWhenFocusedConverter},
+                                ConverterParameter={Binding Source={x:Reference RightPnSuffix}, Path=IsFocused}}" />
                         </Grid>
 
                         <!-- Sex -->
@@ -450,20 +485,14 @@
                 ItemsSource="{Binding Source={x:Reference RootPage}, Path=BindingContext.SexOptions}"
                 SelectedItem="{Binding RightSex, Mode=TwoWay}"
                 IsVisible="{Binding IsSex}"
-                HorizontalOptions="Fill"
-                Margin="0,0,8,0"
-                TextColor="Black"
-                TitleColor="Black" />
+                HorizontalOptions="Fill" Margin="0,0,8,0"
+                TextColor="Black" TitleColor="Black" />
 
                         <!-- RECHTS: Datum -->
                         <Grid Grid.Column="3" IsVisible="{Binding IsDate}" ColumnSpacing="0">
                             <HorizontalStackLayout Grid.ColumnSpan="2" Spacing="6" Padding="8,0,8,0">
-                                <Label VerticalTextAlignment="Center" TextColor="Black" FontSize="13">
-                                    <Label.Text>
-                                        <Binding Path="RightDate" TargetNullValue="" FallbackValue=""
-                         StringFormat="{}{0:dd.MM.yyyy}" />
-                                    </Label.Text>
-                                </Label>
+                                <Label Text="{Binding RightDate, StringFormat='{}{0:dd.MM.yyyy}'}"
+                   VerticalTextAlignment="Center" TextColor="Black" FontSize="13" />
                                 <Image Source="calendar_16.png" HeightRequest="14" WidthRequest="14" VerticalOptions="Center" />
                             </HorizontalStackLayout>
 
@@ -482,12 +511,8 @@
                         <!-- RECHTS: Zeit -->
                         <Grid Grid.Column="3" IsVisible="{Binding IsTime}" ColumnSpacing="0">
                             <HorizontalStackLayout Grid.ColumnSpan="2" Spacing="6" Padding="8,0,8,0">
-                                <Label VerticalTextAlignment="Center" TextColor="Black" FontSize="13">
-                                    <Label.Text>
-                                        <Binding Path="RightTime" TargetNullValue="" FallbackValue=""
-                         StringFormat="{}{0:HH\\:mm\\:ss}" />
-                                    </Label.Text>
-                                </Label>
+                                <Label Text="{Binding RightTime, StringFormat='{}{0:HH\\:mm\\:ss}'}"
+                   VerticalTextAlignment="Center" TextColor="Black" FontSize="13" />
                                 <Image Source="clock_16.png" HeightRequest="14" WidthRequest="14" VerticalOptions="Center" />
                             </HorizontalStackLayout>
 
@@ -503,21 +528,26 @@
                             </TimePicker>
                         </Grid>
 
-                        <!-- Numeric -->
-                        <Entry Grid.Column="3" Style="{StaticResource CellEntry}"
+                        <!-- Numeric (rechts) -->
+                        <Entry x:Name="RightNumeric" Grid.Column="3" Style="{StaticResource CellEntry}"
                Keyboard="Numeric"
-               Text="{Binding RightValue, Mode=TwoWay}"
+               Text="{Binding RightValue, Mode=TwoWay,
+                              Converter={StaticResource OnlyWhenFocusedConverter},
+                              ConverterParameter={Binding Source={x:Reference RightNumeric}, Path=IsFocused}}"
                IsVisible="{Binding IsNumeric}" />
 
-                        <!-- Generic -->
-                        <Entry Grid.Column="3" Style="{StaticResource CellEntry}"
-               Text="{Binding RightValue, Mode=TwoWay}"
+                        <!-- Generic (rechts) -->
+                        <Entry x:Name="RightGeneric" Grid.Column="3" Style="{StaticResource CellEntry}"
+               Text="{Binding RightValue, Mode=TwoWay,
+                              Converter={StaticResource OnlyWhenFocusedConverter},
+                              ConverterParameter={Binding Source={x:Reference RightGeneric}, Path=IsFocused}}"
                IsVisible="{Binding IsGeneric}" />
-
                     </Grid>
                 </DataTemplate>
             </CollectionView.ItemTemplate>
         </CollectionView>
+
+
 
     </Grid>
 </ContentPage>
