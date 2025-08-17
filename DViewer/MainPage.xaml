@@ -265,7 +265,7 @@
         <!-- Row 3: Vergleichstabelle -->
         <!-- Row 3: Vergleichstabelle -->
         <CollectionView Grid.Row="3"
-                ItemsSource="{Binding FilteredMetadata}"
+                ItemsSource="{Binding CombinedMetadataList}"
                 SelectionMode="Single"
                 SelectedItem="{Binding SelectedCombinedMetadataItem, Mode=TwoWay}"
                 EmptyView="Keine Metadaten gefunden"

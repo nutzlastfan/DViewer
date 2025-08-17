@@ -15,6 +15,15 @@ namespace DViewer
     {
         private readonly DicomLoader _loader;
 
+        // Am Kopf der Klasse:
+        private bool _building;
+        private bool _materializing;
+
+        // Sortierzustand (benutzt von UpdateCombinedMetadataList)
+        private string _currentSortColumn = "TagId";
+        private bool _ascending = true;
+
+
         public MainViewModel(DicomLoader loader)
         {
             _loader = loader;
@@ -249,15 +258,19 @@ namespace DViewer
 
         private void ApplySort(string col)
         {
-            if (string.Equals(col, _sortCol, StringComparison.OrdinalIgnoreCase))
-                _asc = !_asc;
-            else { _sortCol = col; _asc = true; }
-
+            if (string.Equals(col, _currentSortColumn, StringComparison.OrdinalIgnoreCase))
+                _ascending = !_ascending;
+            else
+            {
+                _currentSortColumn = col;
+                _ascending = true;
+            }
             OnPropertyChanged(nameof(TagHeaderText));
             OnPropertyChanged(nameof(NameHeaderText));
             OnPropertyChanged(nameof(LeftHeaderText));
             OnPropertyChanged(nameof(RightHeaderText));
-            RaiseFilterChanged();
+
+            UpdateCombinedMetadataList();
         }
 
         public string TagHeaderText => _sortCol == "TagId" ? (_asc ? "Tag ▲" : "Tag ▼") : "Tag";
@@ -280,76 +293,132 @@ namespace DViewer
 
         private void RebuildCombined()
         {
-            var leftMeta = (IEnumerable<DicomMetadataItem>)(Left?.Metadata ?? Array.Empty<DicomMetadataItem>());
-            var rightMeta = (IEnumerable<DicomMetadataItem>)(Right?.Metadata ?? Array.Empty<DicomMetadataItem>());
-
-            var union = leftMeta.Select(m => m.TagId)
-                                .Concat(rightMeta.Select(m => m.TagId))
-                                .Where(t => !string.IsNullOrEmpty(t))
-                                .Distinct(StringComparer.OrdinalIgnoreCase)
-                                .OrderBy(t => t, StringComparer.OrdinalIgnoreCase)
-                                .ToList();
-
-            var leftMap = leftMeta.ToDictionary(m => m.TagId, StringComparer.OrdinalIgnoreCase);
-            var rightMap = rightMeta.ToDictionary(m => m.TagId, StringComparer.OrdinalIgnoreCase);
-
-            _suppressRowChanged = true;
+            _building = true;
             try
             {
-                // alte Handler lösen
-                foreach (var it in CombinedMetadataList)
-                    it.PropertyChanged -= RowChanged;
+                var leftMeta = (IEnumerable<DicomMetadataItem>)(Left?.Metadata ?? Array.Empty<DicomMetadataItem>());
+                var rightMeta = (IEnumerable<DicomMetadataItem>)(Right?.Metadata ?? Array.Empty<DicomMetadataItem>());
 
-                CombinedMetadataList.Clear();
+                var leftMap = leftMeta.ToDictionary(m => m.TagId, StringComparer.OrdinalIgnoreCase);
+                var rightMap = rightMeta.ToDictionary(m => m.TagId, StringComparer.OrdinalIgnoreCase);
 
+                var union = leftMap.Keys
+                                   .Concat(rightMap.Keys)
+                                   .Where(t => !string.IsNullOrEmpty(t))
+                                   .Distinct(StringComparer.OrdinalIgnoreCase)
+                                   .OrderBy(t => t, StringComparer.OrdinalIgnoreCase)
+                                   .ToList();
+
+                _allCombined.Clear();
                 foreach (var tag in union)
                 {
                     leftMap.TryGetValue(tag, out var l);
                     rightMap.TryGetValue(tag, out var r);
 
-                    var item = new CombinedMetadataItem
+                    var row = new CombinedMetadataItem
                     {
                         TagId = tag,
                         Name = l?.Name ?? r?.Name ?? string.Empty,
-                        Vr = l?.Vr ?? r?.Vr ?? string.Empty,
+                        Vr = l?.Vr ?? r?.Vr ?? string.Empty
                     };
 
-                    // Batch: alle Changes gesammelt (pro Property max 1 Raise)
-                    using (item.BeginBatch())
-                    {
-                        if (l != null) item.LeftValue = l.Value ?? string.Empty;
-                        if (r != null) item.RightValue = r.Value ?? string.Empty;
+                    if (l != null) row.LeftValue = l.Value ?? string.Empty;
+                    if (r != null) row.RightValue = r.Value ?? string.Empty;
 
-                        // anfängliche Highlights (keine UI-Stürme, da im Batch)
-                        item.IsHighlighted = HighlightDifferences && item.IsDifferent;
-                        item.LeftInvalidHighlighted = HighlightInvalidValues && item.IsLeftInvalid;
-                        item.RightInvalidHighlighted = HighlightInvalidValues && item.IsRightInvalid;
-                    }
-
-                    CombinedMetadataList.Add(item);
-                    item.PropertyChanged += RowChanged;
+                    _allCombined.Add(row);
                 }
 
-                for (int i = 0; i < CombinedMetadataList.Count; i++)
-                    CombinedMetadataList[i].IsAlternate = (i % 2) == 1;
-
-                // Tagliste rechts
+                // Tag-Filter Vorschlagsliste
                 _allTags.Clear();
                 foreach (var tag in union)
                 {
-                    var nm = (leftMap.TryGetValue(tag, out var l2) ? l2?.Name
-                             : rightMap.TryGetValue(tag, out var r2) ? r2?.Name
-                             : null) ?? string.Empty;
+                    var nm = leftMap.TryGetValue(tag, out var l) ? (l?.Name ?? string.Empty)
+                           : rightMap.TryGetValue(tag, out var r) ? (r?.Name ?? string.Empty)
+                           : string.Empty;
                     _allTags.Add(new TagFilterItem { TagId = tag, Name = nm });
                 }
                 RefreshTagFilterList();
+
+                // Sicht neu materialisieren
+                UpdateCombinedMetadataList();
             }
             finally
             {
-                _suppressRowChanged = false;
+                _building = false;
             }
+        }
 
-            RaiseFilterChanged();
+        private void UpdateCombinedMetadataList()
+        {
+            if (_materializing) return;
+            _materializing = true;
+            try
+            {
+                IEnumerable<CombinedMetadataItem> items = _allCombined;
+
+                // Textfilter
+                var f = (FilterText ?? string.Empty).Trim();
+                if (f.Length > 0)
+                {
+                    var tokens = f.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                    items = items.Where(i => tokens.All(t =>
+                        (i.TagId?.Contains(t, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                        (i.Name?.Contains(t, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                        (i.LeftValue?.Contains(t, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                        (i.RightValue?.Contains(t, StringComparison.OrdinalIgnoreCase) ?? false)));
+                }
+
+                // Tag-spezifisch
+                if (SelectedTagFilter != null && !string.IsNullOrEmpty(SelectedTagFilter.TagId))
+                {
+                    var tagId = SelectedTagFilter.TagId;
+                    items = items.Where(i => string.Equals(i.TagId, tagId, StringComparison.OrdinalIgnoreCase));
+                }
+
+                // „Nur Unterschiede“ / „Nur ungültige“
+                if (ShowOnlyDifferences) items = items.Where(i => i.IsDifferent);
+                if (ShowOnlyInvalid) items = items.Where(i => i.IsLeftInvalid || i.IsRightInvalid);
+
+                // Sortierung
+                items = _currentSortColumn switch
+                {
+                    "TagId" => _ascending ? items.OrderBy(i => i.TagId, StringComparer.OrdinalIgnoreCase) : items.OrderByDescending(i => i.TagId, StringComparer.OrdinalIgnoreCase),
+                    "Name" => _ascending ? items.OrderBy(i => i.Name, StringComparer.OrdinalIgnoreCase) : items.OrderByDescending(i => i.Name, StringComparer.OrdinalIgnoreCase),
+                    "LeftValue" => _ascending ? items.OrderBy(i => i.LeftValue, StringComparer.OrdinalIgnoreCase) : items.OrderByDescending(i => i.LeftValue, StringComparer.OrdinalIgnoreCase),
+                    "RightValue" => _ascending ? items.OrderBy(i => i.RightValue, StringComparer.OrdinalIgnoreCase) : items.OrderByDescending(i => i.RightValue, StringComparer.OrdinalIgnoreCase),
+                    _ => items
+                };
+
+                // Materialisieren
+                var list = items.ToList();
+
+                // Zebra
+                for (int i = 0; i < list.Count; i++)
+                    list[i].IsAlternate = (i % 2) == 1;
+
+                // Alte Handler lösen (CollectionChanged macht das auch, aber so sind wir sauber)
+                foreach (var it in CombinedMetadataList)
+                    it.PropertyChanged -= RowChanged;
+
+                // Sicht ersetzen
+                CombinedMetadataList.Clear();
+                foreach (var it in list)
+                    CombinedMetadataList.Add(it);
+
+                // Highlights anwenden (nur Darstellung)
+                ApplyRowHighlights(CombinedMetadataList);
+                ApplyInvalidHighlight(CombinedMetadataList);
+
+                OnPropertyChanged(nameof(CombinedMetadataList));
+                OnPropertyChanged(nameof(TagHeaderText));
+                OnPropertyChanged(nameof(NameHeaderText));
+                OnPropertyChanged(nameof(LeftHeaderText));
+                OnPropertyChanged(nameof(RightHeaderText));
+            }
+            finally
+            {
+                _materializing = false;
+            }
         }
 
         private void CombinedChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -361,10 +430,8 @@ namespace DViewer
             if (e.NewItems != null)
                 foreach (CombinedMetadataItem it in e.NewItems)
                     it.PropertyChanged += RowChanged;
-
-            RaiseFilterChanged();
         }
-
+ 
         private static readonly HashSet<string> s_filterRelevant = new(StringComparer.Ordinal)
         {
             nameof(CombinedMetadataItem.LeftValue),
