@@ -3,6 +3,7 @@ using FellowOakDicom;
 using Microsoft.Extensions.Logging;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
+using CommunityToolkit.Maui;
 
 namespace DViewer
 {
@@ -12,15 +13,18 @@ namespace DViewer
         {
             var builder = MauiApp.CreateBuilder();
             builder
-                .UseMauiApp<App>()
+                .UseMauiApp<App>()           
+                .UseMauiCommunityToolkitMediaElement()  
                 .ConfigureFonts(fonts =>
                 {
                     fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");
                     fonts.AddFont("OpenSans-Semibold.ttf", "OpenSansSemibold");
                 });
 
+        
+
 #if DEBUG
-    		builder.Logging.AddDebug();
+            builder.Logging.AddDebug();
 #endif
 
             //builder.Services.AddSingleton<IDicomLoader, DicomLoader>();
@@ -37,6 +41,7 @@ namespace DViewer
             new DicomSetupBuilder()
                 .RegisterServices(s => s
                     .AddFellowOakDicom()
+                    .AddImageManager<ImageSharpImageManager>() // <-- ImageSharp aktivieren
                     .AddTranscoderManager<FellowOakDicom.Imaging.NativeCodec.NativeTranscoderManager>())
                 .SkipValidation()
                 .Build();

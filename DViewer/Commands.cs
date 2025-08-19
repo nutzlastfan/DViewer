@@ -5,6 +5,9 @@ using System.Windows.Input;
 namespace DViewer
 {
     // Async ICommand (ohne Parameter)
+
+
+
     public sealed class DelegateCommand : ICommand
     {
         private readonly Func<Task> _executeAsync;

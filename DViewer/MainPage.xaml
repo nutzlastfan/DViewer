@@ -2,552 +2,312 @@
 <ContentPage
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-
+    xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
     xmlns:local="clr-namespace:DViewer"
     x:Class="DViewer.MainPage"
     Title="DICOM Vergleich"
     Padding="10"
-      NavigationPage.HasNavigationBar="False"
+    NavigationPage.HasNavigationBar="False"
     x:Name="RootPage">
 
     <ContentPage.Resources>
         <ResourceDictionary>
             <local:DoubleToGridLengthConverter x:Key="StarConverter" />
             <local:AlternateBackgroundConverter x:Key="AltBgConverter" />
-            <!--<local:NullToBoolConverter x:Key="NullToBoolConverter" />-->
+            <local:FormatDateDisplayConverter x:Key="FormatDateDisplay" />
+            <local:FormatTimeDisplayConverter x:Key="FormatTimeDisplay" />
+            <local:NullableDateConverter x:Key="NullableDateConverter" />
+            <local:NullableTimeConverter x:Key="NullableTimeConverter" />
+            <local:OnlyWhenFocusedConverter x:Key="OnlyWhenFocusedConverter" />
+
+            <Style x:Key="CellEntry" TargetType="Entry">
+                <Setter Property="Margin" Value="2,0"/>
+                <Setter Property="HeightRequest" Value="36"/>
+                <Setter Property="ClearButtonVisibility" Value="WhileEditing"/>
+                <Setter Property="BackgroundColor" Value="{AppThemeBinding Light=#FFFFFFFF, Dark=#1E1E1E}"/>
+                <Setter Property="TextColor" Value="{AppThemeBinding Light=#111111, Dark=#EEEEEE}"/>
+                <Setter Property="PlaceholderColor" Value="{AppThemeBinding Light=#888888, Dark=#888888}"/>
+            </Style>
+
+            <!-- kleiner runder FAB -->
+            <Style x:Key="FabSmall" TargetType="Button">
+                <Setter Property="WidthRequest" Value="36"/>
+                <Setter Property="HeightRequest" Value="36"/>
+                <Setter Property="CornerRadius" Value="18"/>
+                <Setter Property="BackgroundColor" Value="{AppThemeBinding Light=#6A5ACD, Dark=#4C6A5ACD}"/>
+                <Setter Property="TextColor" Value="White"/>
+                <Setter Property="FontAttributes" Value="Bold"/>
+                <Setter Property="Padding" Value="0"/>
+            </Style>
         </ResourceDictionary>
     </ContentPage.Resources>
 
-    <Grid RowDefinitions="Auto, Auto, Auto, *" RowSpacing="8" HorizontalOptions="Fill">
+    <!-- Reihen: 0 Bilder (mit Overlay), 1 Filter, 2 Haupttabelle -->
+    <Grid RowDefinitions="Auto,Auto,*" ColumnDefinitions="*">
 
-        <!-- Row 0: Laden + Vorschaubilder -->
-        <!-- Row 0: Vorschaubilder mit schwebenden Load-Buttons -->
-        <Grid Grid.Row="0" ColumnDefinitions="*,*" ColumnSpacing="8" HorizontalOptions="Fill">
+        <!-- 0) Vorschaubilder mit Overlays -->
+        <Grid Grid.Row="0" ColumnDefinitions="*,*" ColumnSpacing="8">
 
             <!-- LINKS -->
-            <Grid Grid.Column="0" RowDefinitions="Auto,*" RowSpacing="4">
-                <!-- Dateiname (bleibt außerhalb des Bildes) -->
-                <Label Text="{Binding Left.FileName}"
-           FontAttributes="Bold"
-           LineBreakMode="TailTruncation"
-           TextColor="White" />
+            <Frame Grid.Column="0" HasShadow="True" CornerRadius="6" Padding="0">
+                <Grid>
+             
+                    <!-- Bild nur wenn kein Video -->
+                    <Image HeightRequest="500" IsVisible="{Binding LeftHasVideo, Converter={StaticResource InverseBoolConverter}}"
+         Source="{Binding Left.Image}" Aspect="AspectFit">
+                                              <Image.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnLeftPreviewTapped" />
+                        </Image.GestureRecognizers>
+                    </Image>
 
-                <!-- Bild + Overlay-Button -->
-                <Frame Grid.Row="1" HasShadow="True" CornerRadius="6" Padding="0">
-                    <Grid>
-                        <!-- Bild -->
-                        <Image Source="{Binding Left.Image}" Aspect="AspectFit" HeightRequest="160">
-                            <Image.GestureRecognizers>
-                                <TapGestureRecognizer Tapped="OnLeftPreviewTapped" />
-                            </Image.GestureRecognizers>
-                        </Image>
+                    <!-- Video nur wenn vorhanden -->
+                    <toolkit:MediaElement HeightRequest="500" IsVisible="{Binding LeftHasVideo}"
+                Source="{Binding LeftVideoSource}"
+                 ShouldAutoPlay="True" ShouldShowPlaybackControls="True" />
 
-                        <!-- Schwebender Button oben links -->
-                        <Button Text="Links laden"
-                Command="{Binding LoadLeftCommand}"
-         
-                HorizontalOptions="Start"
-                VerticalOptions="Start"
-                Margin="8"
-                Padding="10,6"
-                CornerRadius="18"
-                BackgroundColor="#AA7B61D9"   TextColor="White" />
+                    <!-- Multiframe-Steuerleiste -->
+                    <Grid IsVisible="{Binding LeftHasMultiFrame}" Padding="8" VerticalOptions="End">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Button Text="⏮" Command="{Binding LeftPrevFrameCommand}" />
+                        <Slider Grid.Column="1"
+            Minimum="0" Maximum="{Binding LeftFrameCount, Converter={StaticResource MinusOneConverter}}"
+            Value="{Binding LeftFrameIndex, Mode=TwoWay}"/>
+                        <Button Grid.Column="2" Text="⏭" Command="{Binding LeftNextFrameCommand}" />
+                        <Button Grid.Column="3" Text="{Binding LeftIsPlaying, Converter={StaticResource PlayPauseTextConverter}}"
+            Command="{Binding LeftPlayPauseCommand}"/>
                     </Grid>
-                </Frame>
-            </Grid>
 
-            <!-- RECHTS -->
-            <Grid Grid.Column="1" RowDefinitions="Auto,*" RowSpacing="4">
-                <Label Text="{Binding Right.FileName}"
-           FontAttributes="Bold"
-           LineBreakMode="TailTruncation"
-           TextColor="White" />
 
-                <Frame Grid.Row="1" HasShadow="True" CornerRadius="6" Padding="0">
-                    <Grid>
-                        <Image Source="{Binding Right.Image}" Aspect="AspectFit" HeightRequest="160">
-                            <Image.GestureRecognizers>
-                                <TapGestureRecognizer Tapped="OnRightPreviewTapped" />
-                            </Image.GestureRecognizers>
-                        </Image>
+                    <!-- runder L-Button oben links -->
+                    <Button Text="L"
+                            CornerRadius="18" WidthRequest="36" HeightRequest="36"
+                            FontAttributes="Bold"
+                            HorizontalOptions="Start" VerticalOptions="Start" Margin="8"
+                            Clicked="OnOpenLeftClicked"/>
 
-                        <!-- Schwebender Button oben rechts -->
-                        <Button Text="Rechts laden"
-                Command="{Binding LoadRightCommand}"
-              
-                HorizontalOptions="End"
-                VerticalOptions="Start"
-                Margin="8"
-                Padding="10,6"
-                CornerRadius="18"
-                BackgroundColor="#AA7B61D9"
-                TextColor="White" />
+                    <!-- Text-Overlay -->
+                    <Grid HorizontalOptions="Start" VerticalOptions="Start"
+                          Margin="56,8,8,8" Padding="8"
+                          BackgroundColor="#66000000" MaximumWidthRequest="600" InputTransparent="True">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Patient (mit Sex) -->
+                        <Label Grid.Row="0"
+                               Text="{Binding LeftPatientNameWithSex}"
+                               FontAttributes="Bold" TextColor="White"
+                               LineBreakMode="TailTruncation" MaxLines="1"/>
+
+                        <!-- Species / Breed -->
+                        <Grid Grid.Row="1" ColumnDefinitions="Auto,*" ColumnSpacing="6">
+                            <Label Grid.Column="0" Text="Species" FontAttributes="Italic" TextColor="#DDFFFFFF"/>
+                            <Label Grid.Column="1" Text="{Binding LeftSpecies}" TextColor="White"
+                                   LineBreakMode="TailTruncation" MaxLines="1"/>
+                        </Grid>
+
+                        <!-- PID -->
+                        <Grid Grid.Row="2" ColumnDefinitions="Auto,*" ColumnSpacing="6">
+                            <Label Grid.Column="0" Text="PID" FontAttributes="Italic" TextColor="#DDFFFFFF"/>
+                            <Label Grid.Column="1" Text="{Binding LeftPatientID}" TextColor="White"
+                                   LineBreakMode="TailTruncation" MaxLines="1"/>
+                        </Grid>
+
+                        <!-- DOB -->
+                        <Grid Grid.Row="3" ColumnDefinitions="Auto,*" ColumnSpacing="6">
+                            <Label Grid.Column="0" Text="DOB" FontAttributes="Italic" TextColor="#DDFFFFFF"/>
+                            <Label Grid.Column="1" Text="{Binding LeftBirthDateDisplay}" TextColor="White"/>
+                        </Grid>
+
+                        <!-- Other PID -->
+                        <Grid Grid.Row="4" ColumnDefinitions="Auto,*" ColumnSpacing="6">
+                            <Label Grid.Column="0" Text="Other PID" FontAttributes="Italic" TextColor="#DDFFFFFF"/>
+                            <Label Grid.Column="1" Text="{Binding LeftOtherPid}" TextColor="White"
+                                   LineBreakMode="TailTruncation" MaxLines="1"/>
+                        </Grid>
                     </Grid>
-                </Frame>
-            </Grid>
-
-        </Grid>
-
-        <!-- kombinierter Filterbereich: allgemeiner Filter + DICOM-Tag-Filter nebeneinander -->
-        <Grid Grid.Row="1"
-      RowDefinitions="Auto,*"
-      ColumnDefinitions="2*,3*"
-      ColumnSpacing="16"
-      HorizontalOptions="Fill"
-      VerticalOptions="Start">
-
-            <!-- LINKS: kompakte Suchzeile -->
-            <Frame Grid.Row="0" Grid.Column="0"
-           Padding="8" CornerRadius="6"
-           BackgroundColor="#1E1E1E"
-           HorizontalOptions="Fill" VerticalOptions="Start">
-                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                    <SearchBar
-                Placeholder="Filtern (Tag, Name, Links/Rechts)"
-                Text="{Binding FilterText, Mode=TwoWay}"
-                SearchCommand="{Binding ApplyFilterCommand}"
-                HeightRequest="36" FontSize="14"
-                HorizontalOptions="Fill" />
-                    <!--<Button Grid.Column="1"
-                    Text="Zurücksetzen"
-                    Command="{Binding ClearFilterCommand}"
-                    HeightRequest="36"
-                    VerticalOptions="Center" />-->
                 </Grid>
             </Frame>
 
-            <!-- RECHTS: Tag-Filter über beide Zeilen -->
-            <Frame Grid.Row="0" Grid.Column="1" Grid.RowSpan="2"
-           Padding="8" CornerRadius="6"
-           BackgroundColor="#1E1E1E"
-           HorizontalOptions="Fill" VerticalOptions="Start">
-                <VerticalStackLayout Spacing="6">
-                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                        <Entry
-                    Placeholder="TagId oder Name eingeben..."
-                    Text="{Binding TagSearchText, Mode=TwoWay}"
-                    HeightRequest="36" FontSize="14"
-                    HorizontalOptions="Fill" />
-                        <Button Grid.Column="1"
-                        Text="Löschen"
-                        Command="{Binding ClearTagFilterCommand}"
-                        HeightRequest="36"
-                        VerticalOptions="Center" />
+            <!-- RECHTS -->
+            <Frame Grid.Column="1" HasShadow="True" CornerRadius="6" Padding="0">
+                <Grid>
+                    <Image Source="{Binding Right.Image}" Aspect="AspectFit" HeightRequest="500">
+                        <Image.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnRightPreviewTapped" />
+                        </Image.GestureRecognizers>
+                    </Image>
+
+                    <Button Text="R"
+                            CornerRadius="18" WidthRequest="36" HeightRequest="36"
+                            FontAttributes="Bold"
+                            HorizontalOptions="Start" VerticalOptions="Start" Margin="8"
+                            Clicked="OnOpenRightClicked"/>
+
+                    <Grid HorizontalOptions="Start" VerticalOptions="Start"
+                          Margin="56,8,8,8" Padding="8"
+                          BackgroundColor="#66000000" MaximumWidthRequest="600">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <Label Grid.Row="0"
+                               Text="{Binding RightPatientNameWithSex}"
+                               FontAttributes="Bold" TextColor="White"
+                               LineBreakMode="TailTruncation" MaxLines="1"/>
+
+                        <Grid Grid.Row="1" ColumnDefinitions="Auto,*" ColumnSpacing="6">
+                            <Label Grid.Column="0" Text="Species" FontAttributes="Italic" TextColor="#DDFFFFFF"/>
+                            <Label Grid.Column="1" Text="{Binding RightSpecies}" TextColor="White"
+                                   LineBreakMode="TailTruncation" MaxLines="1"/>
+                        </Grid>
+
+                        <Grid Grid.Row="2" ColumnDefinitions="Auto,*" ColumnSpacing="6">
+                            <Label Grid.Column="0" Text="PID" FontAttributes="Italic" TextColor="#DDFFFFFF"/>
+                            <Label Grid.Column="1" Text="{Binding RightPatientID}" TextColor="White"
+                                   LineBreakMode="TailTruncation" MaxLines="1"/>
+                        </Grid>
+
+                        <Grid Grid.Row="3" ColumnDefinitions="Auto,*" ColumnSpacing="6">
+                            <Label Grid.Column="0" Text="DOB" FontAttributes="Italic" TextColor="#DDFFFFFF"/>
+                            <Label Grid.Column="1" Text="{Binding RightBirthDateDisplay}" TextColor="White"/>
+                        </Grid>
+
+                        <Grid Grid.Row="4" ColumnDefinitions="Auto,*" ColumnSpacing="6">
+                            <Label Grid.Column="0" Text="Other PID" FontAttributes="Italic" TextColor="#DDFFFFFF"/>
+                            <Label Grid.Column="1" Text="{Binding RightOtherPid}" TextColor="White"
+                                   LineBreakMode="TailTruncation" MaxLines="1"/>
+                        </Grid>
+                    </Grid>
+                </Grid>
+            </Frame>
+        </Grid>
+
+        <!-- 1) Optionen / Filter -->
+        <Frame Grid.Row="1" HasShadow="True" CornerRadius="6" Padding="8">
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="10" RowDefinitions="Auto,Auto" RowSpacing="6">
+                <Label Grid.Column="0" Text="Filter:" VerticalTextAlignment="Center" />
+                <Entry Grid.Column="1" Placeholder="Tag, Name oder Wert(e) suchen…" Text="{Binding FilterText, Mode=TwoWay}" />
+                <Label Grid.Column="2" Text="Nur Unterschiede" VerticalTextAlignment="Center" />
+                <Switch Grid.Column="3" IsToggled="{Binding ShowOnlyDifferences, Mode=TwoWay}" />
+                <Label Grid.Column="4" Text="Nur ungültige" VerticalTextAlignment="Center" />
+                <Switch Grid.Column="5" IsToggled="{Binding ShowOnlyInvalid, Mode=TwoWay}" />
+            </Grid>
+        </Frame>
+
+        <!-- 2) Haupt-Bereich -->
+        <Grid Grid.Row="2" ColumnDefinitions="2*,5*" ColumnSpacing="8" RowDefinitions="*">
+
+            <!-- Tags (links) -->
+            <Frame Grid.Column="0" HasShadow="True" CornerRadius="6" Padding="0">
+                <Grid RowDefinitions="Auto,*">
+                    <Grid RowDefinitions="Auto" Padding="8" BackgroundColor="#2D2D2D">
+                        <Grid Grid.Row="1" Grid.ColumnSpan="7" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                            <Label Grid.Column="0" Text="Tag-Filter:" VerticalTextAlignment="Center" />
+                            <Entry Grid.Column="1" Placeholder="(0010,0010) PatientName …" Text="{Binding TagSearchText, Mode=TwoWay}" />
+                            <Button Grid.Column="2" Text="Tag-Filter löschen" Clicked="OnClearTagFilterClicked" />
+                        </Grid>
                     </Grid>
 
-                    <!-- Vorschlagsliste -->
-                    <CollectionView
-                ItemsSource="{Binding FilteredTagFilters}"
-                SelectionMode="Single"
-                SelectedItem="{Binding SelectedTagFilter, Mode=TwoWay}"
-                HeightRequest="180"
-                BackgroundColor="#222"
-                HorizontalOptions="Fill">
-                        <CollectionView.ItemsLayout>
-                            <LinearItemsLayout Orientation="Vertical" ItemSpacing="1" />
-                        </CollectionView.ItemsLayout>
+                    <CollectionView Grid.Row="1"
+                                    ItemsSource="{Binding FilteredTagFilters}"
+                                    SelectionMode="Single"
+                                    SelectionChanged="OnTagFilterSelectionChanged">
                         <CollectionView.ItemTemplate>
                             <DataTemplate>
-                                <Frame Padding="6" HasShadow="False" CornerRadius="4"
-                               BackgroundColor="{Binding IsSelected, Converter={StaticResource AltBgConverter}}">
-                                    <Label Text="{Binding Display}" TextColor="Black" FontSize="14" />
-                                </Frame>
+                                <Grid Padding="8" ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                                    <Label Text="{Binding TagId}" FontAttributes="Bold" />
+                                    <Label Grid.Column="1" Text="{Binding Name}" />
+                                </Grid>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+                </Grid>
+            </Frame>
+
+            <!-- Vergleich (rechts) -->
+            <Frame Grid.Column="1" HasShadow="True" CornerRadius="6" Padding="0">
+                <Grid RowDefinitions="Auto,*">
+
+                    <!-- Kopf: Sort-Buttons + Add(+) je Spalte (Links/Rechts) -->
+                    <Grid RowDefinitions="Auto"
+                          ColumnDefinitions="0.1*,0.2*,*,*"
+                          Padding="8" BackgroundColor="#2D2D2D" ColumnSpacing="8">
+
+                        <!-- Tag / Name -->
+                        <Button Grid.Column="0" Text="{Binding TagHeaderText}"
+                                Clicked="OnSortClicked" CommandParameter="TagId"
+                                TextColor="White" />
+                        <Button Grid.Column="1" Text="{Binding NameHeaderText}"
+                                Clicked="OnSortClicked" CommandParameter="Name"
+                                TextColor="White" />
+
+                        <!-- Links-Header + Add -->
+                        <Grid Grid.Column="2" ColumnDefinitions="*,Auto">
+                            <Button Grid.Column="0" Text="{Binding LeftHeaderText}"
+                                    Clicked="OnSortClicked" CommandParameter="LeftValue"
+                                    TextColor="White" />
+                            <Button Grid.Column="1" Style="{StaticResource FabSmall}"
+                                    Text="+" Margin="8,0,0,0"
+                                    AutomationProperties.Name="Tag zu LINKS hinzufügen"
+                                    Clicked="OnAddTagLeftOverlayClicked" />
+                        </Grid>
+
+                        <!-- Rechts-Header + Add -->
+                        <Grid Grid.Column="3" ColumnDefinitions="*,Auto">
+                            <Button Grid.Column="0" Text="{Binding RightHeaderText}"
+                                    Clicked="OnSortClicked" CommandParameter="RightValue"
+                                    TextColor="White" />
+                            <Button Grid.Column="1" Style="{StaticResource FabSmall}"
+                                    Text="+" Margin="8,0,0,0"
+                                    AutomationProperties.Name="Tag zu RECHTS hinzufügen"
+                                    Clicked="OnAddTagRightOverlayClicked" />
+                        </Grid>
+                    </Grid>
+
+                    <!-- Liste -->
+                    <CollectionView Grid.Row="1"
+                                    ItemsSource="{Binding FilteredItems}"
+                                    SelectionMode="Single"
+                                    SelectionChanged="OnCombinedSelectionChanged">
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Padding="4" ColumnDefinitions="0.1*,0.2*,0.4*,0.4*" RowDefinitions="Auto"
+                                      BackgroundColor="{Binding IsAlternate, Converter={StaticResource AltBgConverter}}">
+                                    <Label Grid.Column="0" Text="{Binding TagId}"   VerticalTextAlignment="Center" FontAttributes="Bold" Margin="4,0" />
+                                    <Label Grid.Column="1" Text="{Binding Name}"    VerticalTextAlignment="Center" LineBreakMode="TailTruncation" Margin="4,0" />
+
+                                    <!-- Links -->
+                                    <Entry x:Name="LeftValueEntry" Grid.Column="2" Margin="2,0"
+                                           Text="{Binding LeftText, Mode=TwoWay,
+                                                  Converter={StaticResource OnlyWhenFocusedConverter},
+                                                  ConverterParameter={Binding Source={x:Reference LeftValueEntry}, Path=IsFocused}}" />
+
+                                    <!-- Rechts -->
+                                    <Entry x:Name="RightValueEntry" Grid.Column="3" Margin="2,0"
+                                           Text="{Binding RightText, Mode=TwoWay,
+                                                  Converter={StaticResource OnlyWhenFocusedConverter},
+                                                  ConverterParameter={Binding Source={x:Reference RightValueEntry}, Path=IsFocused}}" />
+                                </Grid>
                             </DataTemplate>
                         </CollectionView.ItemTemplate>
                     </CollectionView>
 
-                    <!-- aktiver Tagfilter -->
-                    <Label
-                Text="{Binding SelectedTagFilter.Display, StringFormat='Aktiver Tagfilter: {0}'}"
-                IsVisible="{Binding SelectedTagFilter, Converter={StaticResource NullToBoolConverter}}"
-                TextColor="LightGray"
-                FontSize="12" />
-                </VerticalStackLayout>
+                </Grid>
             </Frame>
-
-            <!-- LINKS UNTEN: Platz für deine späteren Elemente -->
-            <Grid Grid.Row="1" Grid.Column="0">
-                <VerticalStackLayout Spacing="8" Margin="0,8,0,0">
-                    <HorizontalStackLayout >
-                    <Label Text="Unterschiede hervorheben" TextColor="White" VerticalOptions="Center" />
-                    <Switch IsToggled="{Binding HighlightDifferences}" />
-                    </HorizontalStackLayout>
-                    <HorizontalStackLayout>
-                    <Label Text="Ungültige Werte markieren" TextColor="White" VerticalOptions="Center"/>
-                    <Switch IsToggled="{Binding HighlightInvalidValues}"/>
-                    </HorizontalStackLayout>
-                    <HorizontalStackLayout>
-                        <Button Text="Tag hinzufügen…"
-        Command="{Binding OpenAddTagPopupCommand}"
-        CommandParameter="{x:Reference RootPage}" />
-                    </HorizontalStackLayout>
-                </VerticalStackLayout>
-            </Grid>
-
         </Grid>
-
-
-
-
-        <!-- Row 2: Header mit Sortierung und dynamischen Breiten -->
-        <!-- Row 2: Header -->
-        <Grid Grid.Row="2"
-      ColumnSpacing="1"
-      BackgroundColor="#E6E6E6">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="{Binding TagWidth,   Converter={StaticResource StarConverter}}" />
-                <ColumnDefinition Width="{Binding NameWidth,  Converter={StaticResource StarConverter}}" />
-                <ColumnDefinition Width="{Binding LeftWidth,  Converter={StaticResource StarConverter}}" />
-                <ColumnDefinition Width="{Binding RightWidth, Converter={StaticResource StarConverter}}" />
-            </Grid.ColumnDefinitions>
-
-            <!-- Tag -->
-            <Grid Grid.Column="0" Padding="8,6" BackgroundColor="#E6E6E6">
-                <Label Style="{x:Null}"
-           Text="{Binding TagHeaderText}"
-                       TextColor="Black"
-           FontAttributes="Bold"
-           HorizontalOptions="StartAndExpand"
-           HorizontalTextAlignment="Start"
-           VerticalTextAlignment="Center"
-           LineBreakMode="NoWrap" />
-                <Grid.GestureRecognizers>
-                    <TapGestureRecognizer Command="{Binding SortCommand}" CommandParameter="TagId" />
-                </Grid.GestureRecognizers>
-            </Grid>
-
-            <!-- Name -->
-            <Grid Grid.Column="1" Padding="8,6" BackgroundColor="#E6E6E6">
-                <Label Style="{x:Null}"
-           Text="{Binding NameHeaderText}"
-           FontAttributes="Bold"
-                             TextColor="Black"
-           HorizontalOptions="StartAndExpand"
-           HorizontalTextAlignment="Start"
-           VerticalTextAlignment="Center"
-           LineBreakMode="NoWrap" />
-                <Grid.GestureRecognizers>
-                    <TapGestureRecognizer Command="{Binding SortCommand}" CommandParameter="Name" />
-                </Grid.GestureRecognizers>
-            </Grid>
-
-            <!-- Links -->
-            <Grid Grid.Column="2" Padding="8,6" BackgroundColor="#E6E6E6">
-                <Label Style="{x:Null}"
-                             TextColor="Black"
-           Text="{Binding LeftHeaderText}"
-           FontAttributes="Bold"
-           HorizontalOptions="StartAndExpand"
-           HorizontalTextAlignment="Start"
-           VerticalTextAlignment="Center"
-           LineBreakMode="NoWrap" />
-                <Grid.GestureRecognizers>
-                    <TapGestureRecognizer Command="{Binding SortCommand}" CommandParameter="LeftValue" />
-                </Grid.GestureRecognizers>
-            </Grid>
-
-            <!-- Rechts -->
-            <Grid Grid.Column="3" Padding="8,6" BackgroundColor="#E6E6E6">
-                <Label Style="{x:Null}"
-                             TextColor="Black"
-           Text="{Binding RightHeaderText}"
-           FontAttributes="Bold"
-           HorizontalOptions="StartAndExpand"
-           HorizontalTextAlignment="Start"
-           VerticalTextAlignment="Center"
-           LineBreakMode="NoWrap" />
-                <Grid.GestureRecognizers>
-                    <TapGestureRecognizer Command="{Binding SortCommand}" CommandParameter="RightValue" />
-                </Grid.GestureRecognizers>
-            </Grid>
-        </Grid>
-
-        <!-- Row 3: Vergleichstabelle -->
-        <CollectionView Grid.Row="3"
-                ItemsSource="{Binding CombinedMetadataList}"
-                SelectionMode="Single"
-                SelectedItem="{Binding SelectedCombinedMetadataItem, Mode=TwoWay}"
-                EmptyView="Keine Metadaten gefunden"
-                HorizontalOptions="Fill"
-                VerticalOptions="Fill">
-            <CollectionView.ItemsLayout>
-                <LinearItemsLayout Orientation="Vertical" ItemSpacing="1" />
-            </CollectionView.ItemsLayout>
-
-            <CollectionView.ItemTemplate>
-                <DataTemplate>
-                    <Grid Padding="0" ColumnSpacing="1" HorizontalOptions="Fill">
-
-                        <!-- Styles -->
-                        <Grid.Resources>
-                            <Style x:Key="CellLabel" TargetType="Label" BasedOn="{x:Null}">
-                                <Setter Property="VerticalTextAlignment" Value="Center" />
-                                <Setter Property="HorizontalTextAlignment" Value="Start" />
-                                <Setter Property="HorizontalOptions" Value="StartAndExpand" />
-                                <Setter Property="LineBreakMode" Value="TailTruncation" />
-                                <Setter Property="MaxLines" Value="1" />
-                                <Setter Property="FontSize" Value="13" />
-                                <Setter Property="TextColor" Value="Black" />
-                                <Setter Property="Margin" Value="8,2,8,2" />
-                            </Style>
-
-                            <Style x:Key="CellEntry" TargetType="Entry" BasedOn="{x:Null}">
-                                <Setter Property="BackgroundColor" Value="Transparent" />
-                                <Setter Property="TextColor" Value="Black" />
-                                <Setter Property="PlaceholderColor" Value="Black" />
-                                <Setter Property="HorizontalTextAlignment" Value="Start" />
-                                <Setter Property="HorizontalOptions" Value="Fill" />
-                                <Setter Property="FontSize" Value="13" />
-                                <Setter Property="HeightRequest" Value="20" />
-                                <Setter Property="ClearButtonVisibility" Value="WhileEditing" />
-                                <Setter Property="Margin" Value="0,0,8,0" />
-                            </Style>
-                        </Grid.Resources>
-
-                        <!-- Zebra / Auswahl / Diff -->
-                        <Grid.Style>
-                            <Style TargetType="Grid">
-                                <Setter Property="BackgroundColor"
-                    Value="{Binding IsAlternate, Converter={StaticResource AltBgConverter}}" />
-                                <Style.Triggers>
-                                    <DataTrigger TargetType="Grid" Binding="{Binding IsHighlighted}" Value="True">
-                                        <Setter Property="BackgroundColor" Value="#FFF2B3" />
-                                    </DataTrigger>
-                                    <DataTrigger TargetType="Grid" Binding="{Binding IsSelected}" Value="True">
-                                        <Setter Property="BackgroundColor" Value="#AED6F1" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Grid.Style>
-
-                        <!-- *** WICHTIG: Spaltenbreiten wieder rein *** -->
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="{Binding Source={x:Reference RootPage}, Path=BindingContext.TagWidth,   Converter={StaticResource StarConverter}, Mode=OneWay}" />
-                            <ColumnDefinition Width="{Binding Source={x:Reference RootPage}, Path=BindingContext.NameWidth,  Converter={StaticResource StarConverter}, Mode=OneWay}" />
-                            <ColumnDefinition Width="{Binding Source={x:Reference RootPage}, Path=BindingContext.LeftWidth,  Converter={StaticResource StarConverter}, Mode=OneWay}" />
-                            <ColumnDefinition Width="{Binding Source={x:Reference RootPage}, Path=BindingContext.RightWidth, Converter={StaticResource StarConverter}, Mode=OneWay}" />
-                        </Grid.ColumnDefinitions>
-
-                        <!-- 🔴 Zell-Highlights -->
-                        <BoxView Grid.Column="2" Color="#FADBD8"
-                 IsVisible="{Binding LeftInvalidHighlighted}"
-                 InputTransparent="True">
-                            <BoxView.Triggers>
-                                <DataTrigger TargetType="BoxView" Binding="{Binding IsSelected}" Value="True">
-                                    <Setter Property="IsVisible" Value="False" />
-                                </DataTrigger>
-                            </BoxView.Triggers>
-                        </BoxView>
-
-                        <BoxView Grid.Column="3" Color="#FADBD8"
-                 IsVisible="{Binding RightInvalidHighlighted}"
-                 InputTransparent="True">
-                            <BoxView.Triggers>
-                                <DataTrigger TargetType="BoxView" Binding="{Binding IsSelected}" Value="True">
-                                    <Setter Property="IsVisible" Value="False" />
-                                </DataTrigger>
-                            </BoxView.Triggers>
-                        </BoxView>
-
-                        <!-- *** Labels für Spalte 0/1 *** -->
-                        <Label Grid.Column="0" Style="{StaticResource CellLabel}" Text="{Binding TagId}" />
-                        <Label Grid.Column="1" Style="{StaticResource CellLabel}" Text="{Binding Name}" />
-
-                        <!-- ===== Spalte 2 (Links) ===== -->
-
-                        <!-- PN -->
-                        <Grid Grid.Column="2" IsVisible="{Binding IsPersonName}"
-              ColumnDefinitions="2*,2*,*,Auto,Auto" ColumnSpacing="4">
-                            <Entry x:Name="LeftPnFamily" Grid.Column="0" Style="{StaticResource CellEntry}"
-                 Placeholder="Nachname"
-                 Text="{Binding LeftPN_Family, Mode=TwoWay,
-                                Converter={StaticResource OnlyWhenFocusedConverter},
-                                ConverterParameter={Binding Source={x:Reference LeftPnFamily}, Path=IsFocused}}" />
-                            <Entry x:Name="LeftPnGiven" Grid.Column="1" Style="{StaticResource CellEntry}"
-                 Placeholder="Vorname"
-                 Text="{Binding LeftPN_Given, Mode=TwoWay,
-                                Converter={StaticResource OnlyWhenFocusedConverter},
-                                ConverterParameter={Binding Source={x:Reference LeftPnGiven}, Path=IsFocused}}" />
-                            <Entry x:Name="LeftPnMiddle" Grid.Column="2" Style="{StaticResource CellEntry}"
-                 Placeholder="Mittel"
-                 Text="{Binding LeftPN_Middle, Mode=TwoWay,
-                                Converter={StaticResource OnlyWhenFocusedConverter},
-                                ConverterParameter={Binding Source={x:Reference LeftPnMiddle}, Path=IsFocused}}" />
-                            <Entry x:Name="LeftPnPrefix" Grid.Column="3" Style="{StaticResource CellEntry}"
-                 Placeholder="Präfix" WidthRequest="70"
-                 Text="{Binding LeftPN_Prefix, Mode=TwoWay,
-                                Converter={StaticResource OnlyWhenFocusedConverter},
-                                ConverterParameter={Binding Source={x:Reference LeftPnPrefix}, Path=IsFocused}}" />
-                            <Entry x:Name="LeftPnSuffix" Grid.Column="4" Style="{StaticResource CellEntry}"
-                 Placeholder="Suffix" WidthRequest="70"
-                 Text="{Binding LeftPN_Suffix, Mode=TwoWay,
-                                Converter={StaticResource OnlyWhenFocusedConverter},
-                                ConverterParameter={Binding Source={x:Reference LeftPnSuffix}, Path=IsFocused}}" />
-                        </Grid>
-
-                        <!-- Sex -->
-                        <Picker Grid.Column="2"
-                ItemsSource="{Binding Source={x:Reference RootPage}, Path=BindingContext.SexOptions}"
-                SelectedItem="{Binding LeftSex, Mode=TwoWay}"
-                IsVisible="{Binding IsSex}"
-                HorizontalOptions="Fill" Margin="0,0,8,0"
-                TextColor="Black" TitleColor="Black" />
-
-                        <!-- LINKS: Datum -->
-                        <Grid Grid.Column="2" IsVisible="{Binding IsDate}" ColumnSpacing="0">
-                            <HorizontalStackLayout Grid.ColumnSpan="2" Spacing="6" Padding="8,0,8,0">
-                                <Label Text="{Binding LeftDate, StringFormat='{}{0:dd.MM.yyyy}'}"
-                   VerticalTextAlignment="Center" TextColor="Black" FontSize="13" />
-                                <Image Source="calendar_16.png" HeightRequest="14" WidthRequest="14" VerticalOptions="Center" />
-                            </HorizontalStackLayout>
-
-                            <DatePicker Grid.ColumnSpan="2"
-                      BackgroundColor="Transparent"
-                      TextColor="Transparent"
-                      Opacity="0.01"
-                      HeightRequest="20">
-                                <DatePicker.Date>
-                                    <Binding Path="LeftDate" Mode="TwoWay"
-                       Converter="{StaticResource NullableDateConverter}" />
-                                </DatePicker.Date>
-                            </DatePicker>
-                        </Grid>
-
-                        <!-- LINKS: Zeit -->
-                        <Grid Grid.Column="2" IsVisible="{Binding IsTime}" ColumnSpacing="0">
-                            <HorizontalStackLayout Grid.ColumnSpan="2" Spacing="6" Padding="8,0,8,0">
-                                <Label Text="{Binding LeftTime, StringFormat='{}{0:HH\\:mm\\:ss}'}"
-                   VerticalTextAlignment="Center" TextColor="Black" FontSize="13" />
-                                <Image Source="clock_16.png" HeightRequest="14" WidthRequest="14" VerticalOptions="Center" />
-                            </HorizontalStackLayout>
-
-                            <TimePicker Grid.ColumnSpan="2"
-                      BackgroundColor="Transparent"
-                      TextColor="Transparent"
-                      Opacity="0.01"
-                      HeightRequest="20">
-                                <TimePicker.Time>
-                                    <Binding Path="LeftTime" Mode="TwoWay"
-                       Converter="{StaticResource NullableTimeConverter}" />
-                                </TimePicker.Time>
-                            </TimePicker>
-                        </Grid>
-
-                        <!-- Numeric (links) -->
-                        <Entry x:Name="LeftNumeric" Grid.Column="2" Style="{StaticResource CellEntry}"
-               Keyboard="Numeric"
-               Text="{Binding LeftValue, Mode=TwoWay,
-                              Converter={StaticResource OnlyWhenFocusedConverter},
-                              ConverterParameter={Binding Source={x:Reference LeftNumeric}, Path=IsFocused}}"
-               IsVisible="{Binding IsNumeric}" />
-
-                        <!-- Generic (links) -->
-                        <Entry x:Name="LeftGeneric" Grid.Column="2" Style="{StaticResource CellEntry}"
-               Text="{Binding LeftValue, Mode=TwoWay,
-                              Converter={StaticResource OnlyWhenFocusedConverter},
-                              ConverterParameter={Binding Source={x:Reference LeftGeneric}, Path=IsFocused}}"
-               IsVisible="{Binding IsGeneric}" />
-
-                        <!-- ===== Spalte 3 (Rechts) ===== -->
-
-                        <!-- PN rechts -->
-                        <Grid Grid.Column="3" IsVisible="{Binding IsPersonName}"
-              ColumnDefinitions="2*,2*,*,Auto,Auto" ColumnSpacing="4">
-                            <Entry x:Name="RightPnFamily" Grid.Column="0" Style="{StaticResource CellEntry}"
-                 Placeholder="Nachname"
-                 Text="{Binding RightPN_Family, Mode=TwoWay,
-                                Converter={StaticResource OnlyWhenFocusedConverter},
-                                ConverterParameter={Binding Source={x:Reference RightPnFamily}, Path=IsFocused}}" />
-                            <Entry x:Name="RightPnGiven" Grid.Column="1" Style="{StaticResource CellEntry}"
-                 Placeholder="Vorname"
-                 Text="{Binding RightPN_Given, Mode=TwoWay,
-                                Converter={StaticResource OnlyWhenFocusedConverter},
-                                ConverterParameter={Binding Source={x:Reference RightPnGiven}, Path=IsFocused}}" />
-                            <Entry x:Name="RightPnMiddle" Grid.Column="2" Style="{StaticResource CellEntry}"
-                 Placeholder="Mittel"
-                 Text="{Binding RightPN_Middle, Mode=TwoWay,
-                                Converter={StaticResource OnlyWhenFocusedConverter},
-                                ConverterParameter={Binding Source={x:Reference RightPnMiddle}, Path=IsFocused}}" />
-                            <Entry x:Name="RightPnPrefix" Grid.Column="3" Style="{StaticResource CellEntry}"
-                 Placeholder="Präfix" WidthRequest="70"
-                 Text="{Binding RightPN_Prefix, Mode=TwoWay,
-                                Converter={StaticResource OnlyWhenFocusedConverter},
-                                ConverterParameter={Binding Source={x:Reference RightPnPrefix}, Path=IsFocused}}" />
-                            <Entry x:Name="RightPnSuffix" Grid.Column="4" Style="{StaticResource CellEntry}"
-                 Placeholder="Suffix" WidthRequest="70"
-                 Text="{Binding RightPN_Suffix, Mode=TwoWay,
-                                Converter={StaticResource OnlyWhenFocusedConverter},
-                                ConverterParameter={Binding Source={x:Reference RightPnSuffix}, Path=IsFocused}}" />
-                        </Grid>
-
-                        <!-- Sex -->
-                        <Picker Grid.Column="3"
-                ItemsSource="{Binding Source={x:Reference RootPage}, Path=BindingContext.SexOptions}"
-                SelectedItem="{Binding RightSex, Mode=TwoWay}"
-                IsVisible="{Binding IsSex}"
-                HorizontalOptions="Fill" Margin="0,0,8,0"
-                TextColor="Black" TitleColor="Black" />
-
-                        <!-- RECHTS: Datum -->
-                        <Grid Grid.Column="3" IsVisible="{Binding IsDate}" ColumnSpacing="0">
-                            <HorizontalStackLayout Grid.ColumnSpan="2" Spacing="6" Padding="8,0,8,0">
-                                <Label Text="{Binding RightDate, StringFormat='{}{0:dd.MM.yyyy}'}"
-                   VerticalTextAlignment="Center" TextColor="Black" FontSize="13" />
-                                <Image Source="calendar_16.png" HeightRequest="14" WidthRequest="14" VerticalOptions="Center" />
-                            </HorizontalStackLayout>
-
-                            <DatePicker Grid.ColumnSpan="2"
-                      BackgroundColor="Transparent"
-                      TextColor="Transparent"
-                      Opacity="0.01"
-                      HeightRequest="20">
-                                <DatePicker.Date>
-                                    <Binding Path="RightDate" Mode="TwoWay"
-                       Converter="{StaticResource NullableDateConverter}" />
-                                </DatePicker.Date>
-                            </DatePicker>
-                        </Grid>
-
-                        <!-- RECHTS: Zeit -->
-                        <Grid Grid.Column="3" IsVisible="{Binding IsTime}" ColumnSpacing="0">
-                            <HorizontalStackLayout Grid.ColumnSpan="2" Spacing="6" Padding="8,0,8,0">
-                                <Label Text="{Binding RightTime, StringFormat='{}{0:HH\\:mm\\:ss}'}"
-                   VerticalTextAlignment="Center" TextColor="Black" FontSize="13" />
-                                <Image Source="clock_16.png" HeightRequest="14" WidthRequest="14" VerticalOptions="Center" />
-                            </HorizontalStackLayout>
-
-                            <TimePicker Grid.ColumnSpan="2"
-                      BackgroundColor="Transparent"
-                      TextColor="Transparent"
-                      Opacity="0.01"
-                      HeightRequest="20">
-                                <TimePicker.Time>
-                                    <Binding Path="RightTime" Mode="TwoWay"
-                       Converter="{StaticResource NullableTimeConverter}" />
-                                </TimePicker.Time>
-                            </TimePicker>
-                        </Grid>
-
-                        <!-- Numeric (rechts) -->
-                        <Entry x:Name="RightNumeric" Grid.Column="3" Style="{StaticResource CellEntry}"
-               Keyboard="Numeric"
-               Text="{Binding RightValue, Mode=TwoWay,
-                              Converter={StaticResource OnlyWhenFocusedConverter},
-                              ConverterParameter={Binding Source={x:Reference RightNumeric}, Path=IsFocused}}"
-               IsVisible="{Binding IsNumeric}" />
-
-                        <!-- Generic (rechts) -->
-                        <Entry x:Name="RightGeneric" Grid.Column="3" Style="{StaticResource CellEntry}"
-               Text="{Binding RightValue, Mode=TwoWay,
-                              Converter={StaticResource OnlyWhenFocusedConverter},
-                              ConverterParameter={Binding Source={x:Reference RightGeneric}, Path=IsFocused}}"
-               IsVisible="{Binding IsGeneric}" />
-                    </Grid>
-                </DataTemplate>
-            </CollectionView.ItemTemplate>
-        </CollectionView>
-
-
-
     </Grid>
 </ContentPage>

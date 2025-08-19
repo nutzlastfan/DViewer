@@ -66,6 +66,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<PackageReference Include="CommunityToolkit.Maui.MediaElement" Version="4.1.2" />
 		<PackageReference Include="fo-dicom" Version="5.2.2" />
 		<PackageReference Include="fo-dicom.Codecs" Version="5.16.3" />
 		<PackageReference Include="fo-dicom.Imaging.ImageSharp" Version="5.2.2" />

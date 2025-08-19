@@ -11,6 +11,9 @@
             <local:OnlyWhenFocusedConverter x:Key="OnlyWhenFocusedConverter" />
             <local:DoubleToGridLengthConverter x:Key="DoubleToGridLengthConverter" />
             <local:StarConverter x:Key="StarConverter" />
+            <local:InverseBoolConverter x:Key="InverseBoolConverter" />
+            <local:MinusOneConverter x:Key="MinusOneConverter" />
+            <local:PlayPauseTextConverter x:Key="PlayPauseTextConverter" />
             <local:AlternateBackgroundConverter x:Key="AltBgConverter" />
             <local:FormatDateDisplayConverter x:Key="FormatDateDisplayConverter" />
             <local:FormatTimeDisplayConverter x:Key="FormatTimeDisplayConverter" />

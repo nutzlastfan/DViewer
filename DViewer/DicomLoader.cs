@@ -1,6 +1,17 @@
-﻿using FellowOakDicom;
-using FellowOakDicom.Imaging;
+﻿using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using System.Threading;
+using System.Threading.Tasks;
 
+using Microsoft.Maui.Controls;            // ImageSource
+using Microsoft.Maui.Storage;             // FileSystem
+
+using FellowOakDicom;
+using FellowOakDicom.Imaging;
+using FellowOakDicom.IO.Buffer;
 
 // ImageSharp
 using SixLabors.ImageSharp;
@@ -12,7 +23,9 @@ namespace DViewer
 {
     public class DicomLoader
     {
-        // Große/Binär-Tags weglassen
+        private const int MAX_PREVIEW_FRAMES = 300; // Safety-Limit für cine
+
+        // Große/Binär-Tags nicht in die Metadatenliste aufnehmen
         private static readonly HashSet<DicomTag> SkipTags = new()
         {
             DicomTag.PixelData,
@@ -20,46 +33,14 @@ namespace DViewer
             DicomTag.EncapsulatedDocument
         };
 
-        //private static bool IsOverlayData(DicomItem it) =>
-        //    it.Tag.Group >= 0x6000 && it.Tag.Group <= 0x60FF && it.Tag.Element == 0x3000;
-
-        //private static string ReadValueSafe(DicomItem item)
-        //{
-        //    try
-        //    {
-        //        if (item.ValueRepresentation == DicomVR.SQ) return "[Sequence]";
-        //        if (SkipTags.Contains(item.Tag) || IsOverlayData(item)) return "[Binary]";
-
-        //        if (item is DicomElement el)
-        //        {
-        //            int count = el.Count;
-        //            if (count <= 0) return string.Empty;
-
-        //            int take = Math.Min(count, 16);
-        //            var vals = new string[take];
-        //            for (int i = 0; i < take; i++)
-        //            {
-        //                try { vals[i] = el.Get<string>(i) ?? string.Empty; }
-        //                catch { vals[i] = string.Empty; }
-        //            }
-        //            if (count > take) vals[take - 1] += $" …(+{count - take})";
-        //            return string.Join("\\", vals);
-        //        }
-
-        //        return "[Unsupported]";
-        //    }
-        //    catch
-        //    {
-        //        return string.Empty;
-        //    }
-        //}
+        // ---------- Public API ----------
 
         public async Task<DicomFileViewModel?> PickAndLoadAsync(CancellationToken ct = default)
         {
             try
             {
-                var pick = await Microsoft.Maui.Storage.FilePicker.Default.PickAsync(
-                    new Microsoft.Maui.Storage.PickOptions { PickerTitle = "DICOM-Datei auswählen" });
+                var pick = await FilePicker.Default.PickAsync(
+                    new PickOptions { PickerTitle = "DICOM-Datei auswählen" });
                 if (pick == null) return null;
 
                 var path = pick.FullPath ?? pick.FileName;
@@ -71,15 +52,319 @@ namespace DViewer
             }
         }
 
-        //private static readonly HashSet<DicomTag> SkipTags = new()
-        //{
-        //    DicomTag.PixelData,
-        //    DicomTag.WaveformData,
-        //    DicomTag.EncapsulatedDocument
-        //};
+        public async Task<DicomFileViewModel> LoadAsync(string path, CancellationToken ct = default)
+        {
+            return await Task.Run(() =>
+            {
+                ct.ThrowIfCancellationRequested();
 
-        private static bool IsOverlayData(DicomItem it) =>
-            it.Tag.Group >= 0x6000 && it.Tag.Group <= 0x60FF && it.Tag.Element == 0x3000;
+                var vm = new DicomFileViewModel
+                {
+                    FileName = System.IO.Path.GetFileName(path),
+                    Image = null
+                };
+
+                var list = new List<DicomMetadataItem>();
+
+                try
+                {
+                    var dicom = DicomFile.Open(path);
+                    var ds = dicom.Dataset;
+
+                    // 1) Metadaten sammeln
+                    foreach (var item in ds)
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        try
+                        {
+                            var tag = item.Tag;
+                            var name = tag.DictionaryEntry?.Name ?? string.Empty;
+                            var vr = item.ValueRepresentation?.Code ?? item.ValueRepresentation?.ToString() ?? string.Empty;
+                            var val = ReadValueSafe(item);
+
+                            list.Add(new DicomMetadataItem
+                            {
+                                TagId = tag.ToString(),
+                                Name = name,
+                                Vr = vr,
+                                Value = val
+                            });
+                        }
+                        catch { /* einzelnes Item ignorieren */ }
+                    }
+
+                    vm.SetMetadata(list);
+
+                    // 2) Video erkennen & extrahieren (MPEG-4/H.264, MPEG-2, HEVC)
+                    string? videoPath = null;
+                    string? videoMime = null;
+                    TryExtractEncapsulatedVideo(dicom, out videoPath, out videoMime);
+
+                    if (!string.IsNullOrEmpty(videoPath))
+                    {
+                        // Video-Infos optional ins VM spiegeln (nur falls vorhanden)
+                        TrySetVideoOnVm(vm, videoPath!, videoMime);
+
+                        // Versuche zusätzlich ein Standbild (Frame 0) zu rendern (für Preview)
+                        //vm.Image = TryRenderFirstFrame(ds);
+                        // Kein Frames-Rendering für echte Video-TS
+                        TrySetFramesOnVm(vm, null, null);
+                        return vm;
+                    }
+
+                    // 3) Kein „echtes“ Video – versuche cine (Multi-Frame) zu rendern
+                    var frames = BuildFrameSources(ds, out var fps);
+                    if (frames != null && frames.Count > 0)
+                    {
+                        vm.Image = frames[0];
+                        TrySetFramesOnVm(vm, frames, fps);
+                    }
+                    else
+                    {
+                        // 4) Fallback: Einzelbild
+                        vm.Image = BuildPreviewImageSource(ds);
+                        TrySetFramesOnVm(vm, null, null);
+                    }
+                }
+                catch
+                {
+                    vm.SetMetadata(Array.Empty<DicomMetadataItem>());
+                    vm.Image = null;
+                    TrySetFramesOnVm(vm, null, null);
+                }
+
+                return vm;
+            }, ct).ConfigureAwait(false);
+        }
+
+        // ---------- Video-Erkennung & -Extraktion ----------
+
+        /// <summary>
+        /// Erkennt MPEG-4/H.264, MPEG-2 oder HEVC Transfer Syntaxen und schreibt den
+        /// zusammenhängenden Bitstream in eine Temp-Datei. Liefert Pfad + MIME zurück.
+        /// </summary>
+        private static void TryExtractEncapsulatedVideo(DicomFile file, out string? tempPath, out string? mime)
+        {
+            tempPath = null;
+            mime = null;
+
+            try
+            {
+                if (file?.Dataset is null) return;
+
+                var ts = file.FileMetaInfo?.TransferSyntax;
+                if (ts is null || !ts.IsEncapsulated || !IsVideoTransferSyntax(ts)) return;
+
+                var ds = file.Dataset;
+
+                // PixelData holen
+                var item = ds.GetDicomItem<DicomItem>(DicomTag.PixelData);
+                if (item is null) return;
+
+                byte[]? bytes = null;
+
+                // 1) Bevorzugt: komplette Bytefolge aus Fragmenten zusammensetzen
+                if (item is DicomOtherByteFragment frag)
+                {
+                    if (frag.Fragments.Count == 1)
+                    {
+                        bytes = frag.Fragments[0]?.Data;
+                    }
+                    else if (frag.Fragments.Count > 1)
+                    {
+                        // alle Fragmente hintereinander
+                        bytes = new CompositeByteBuffer(frag.Fragments.ToArray()).Data;
+                    }
+                }
+                // 2) Fallback: Manche Implementierungen legen es als DicomElement mit Buffer ab
+                else if (item is DicomElement el)
+                {
+                    bytes = el.Buffer?.Data;
+                }
+
+                // 3) Alternativ-Fallback: über DicomPixelData Frame(0)
+                if (bytes is null || bytes.Length == 0)
+                {
+                    var px = FellowOakDicom.Imaging.DicomPixelData.Create(ds);
+                    if (px != null && px.NumberOfFrames > 0)
+                    {
+                        var buf = px.GetFrame(0);
+                        bytes = buf?.Data;
+                    }
+                }
+
+                if (bytes is null || bytes.Length == 0) return;
+
+                // Datei im Cache ablegen
+                var ext = GetVideoExtension(ts);
+                mime = GetVideoMime(ts);
+
+                var fileName = $"{Guid.NewGuid():N}{ext}";
+                var fullPath = Path.Combine(FileSystem.CacheDirectory, fileName);
+                File.WriteAllBytes(fullPath, bytes);
+
+                tempPath = fullPath;
+            }
+            catch
+            {
+                tempPath = null;
+                mime = null;
+            }
+
+        }
+
+
+        private static bool IsVideoTransferSyntax(DicomTransferSyntax ts)
+        {
+            // Sichere Erkennung über UID-String-Präfixe (robust gegen FO-DICOM-Versionen)
+            // MPEG-2: 1.2.840.10008.1.2.4.100 / .101
+            // MPEG-4 AVC/H.264: 1.2.840.10008.1.2.4.102 .. .106 (verschiedene Profile/Level/Vorsätze)
+            // HEVC/H.265: 1.2.840.10008.1.2.4.107 .. .109 (je nach DICOM Version)
+            var uid = ts.UID?.UID ?? string.Empty;
+
+            if (uid == "1.2.840.10008.1.2.4.100" || uid == "1.2.840.10008.1.2.4.101")
+                return true; // MPEG-2
+
+            if (uid.StartsWith("1.2.840.10008.1.2.4.10", StringComparison.Ordinal))
+                return true; // MPEG-4 AVC/H.264 Familie (.102-.106 etc.)
+
+            if (uid.StartsWith("1.2.840.10008.1.2.4.107", StringComparison.Ordinal) ||
+                uid.StartsWith("1.2.840.10008.1.2.4.108", StringComparison.Ordinal) ||
+                uid.StartsWith("1.2.840.10008.1.2.4.109", StringComparison.Ordinal))
+                return true; // HEVC/H.265 Varianten
+
+            return false;
+        }
+
+        private static string GetVideoExtension(DicomTransferSyntax ts)
+        {
+            var uid = ts.UID?.UID ?? string.Empty;
+
+            if (uid == "1.2.840.10008.1.2.4.100" || uid == "1.2.840.10008.1.2.4.101")
+                return ".mpg"; // MPEG-2 Program Stream (naheliegend)
+
+            if (uid.StartsWith("1.2.840.10008.1.2.4.10", StringComparison.Ordinal))
+                return ".h264"; // AVC Elementary Stream (ohne MP4-Container)
+
+            if (uid.StartsWith("1.2.840.10008.1.2.4.107", StringComparison.Ordinal) ||
+                uid.StartsWith("1.2.840.10008.1.2.4.108", StringComparison.Ordinal) ||
+                uid.StartsWith("1.2.840.10008.1.2.4.109", StringComparison.Ordinal))
+                return ".h265"; // HEVC Elementary Stream
+
+            return ".bin";
+        }
+
+        private static string GetVideoMime(DicomTransferSyntax ts)
+        {
+            var uid = ts.UID?.UID ?? string.Empty;
+
+            if (uid == "1.2.840.10008.1.2.4.100" || uid == "1.2.840.10008.1.2.4.101")
+                return "video/mpeg";
+
+            if (uid.StartsWith("1.2.840.10008.1.2.4.10", StringComparison.Ordinal))
+                return "video/avc";     // H.264 elementary stream
+
+            if (uid.StartsWith("1.2.840.10008.1.2.4.107", StringComparison.Ordinal) ||
+                uid.StartsWith("1.2.840.10008.1.2.4.108", StringComparison.Ordinal) ||
+                uid.StartsWith("1.2.840.10008.1.2.4.109", StringComparison.Ordinal))
+                return "video/hevc";    // H.265 elementary stream
+
+            return "application/octet-stream";
+        }
+
+        private static byte[] BufferToArray(IByteBuffer buf)
+        {
+            try
+            {
+                // Schneller Pfad: ohne Kopie
+                if (buf is MemoryByteBuffer mbb)
+                    return mbb.Data;
+
+                // Universeller Pfad: FO-DICOM stellt hier die Daten als Array bereit
+                return buf.Data ?? Array.Empty<byte>();
+            }
+            catch
+            {
+                return Array.Empty<byte>();
+            }
+        }
+
+        // ---------- Multi-Frame (cine) ----------
+
+        private static IReadOnlyList<ImageSource>? BuildFrameSources(DicomDataset ds, out double? fps)
+        {
+            fps = null;
+            try
+            {
+                var px = DicomPixelData.Create(ds);
+                if (px == null || px.NumberOfFrames <= 1 || !ds.Contains(DicomTag.PixelData))
+                    return null;
+
+                // Wenn Transfer Syntax „Video“ ist, behandeln wir es nicht als cine-Frames
+                var ts = ds.InternalTransferSyntax ?? DicomTransferSyntax.ImplicitVRLittleEndian;
+                if (IsVideoTransferSyntax(ts))
+                    return null;
+
+                fps = GetFps(ds);
+                int count = Math.Min(px.NumberOfFrames, MAX_PREVIEW_FRAMES);
+
+                var di = new DicomImage(ds); // FO-DICOM rendert pro Frame
+                var list = new List<ImageSource>(count);
+
+                for (int i = 0; i < count; i++)
+                {
+                    using var rendered = di.RenderImage(i);
+                    using var sharp = rendered.AsSharpImage(); // erfordert FO-DICOM ImageSharp
+                    using var ms = new MemoryStream();
+                    sharp.Save(ms, new PngEncoder());
+                    var png = ms.ToArray();
+                    list.Add(ImageSource.FromStream(() => new MemoryStream(png)));
+                }
+
+                return list;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        // ---------- Einzelbild-Preview ----------
+
+        private static ImageSource? BuildPreviewImageSource(DicomDataset ds)
+        {
+            // Robust: erst FO-DICOM rendern lassen (funktioniert für viele komprimierte Bilder)
+            var img = TryRenderFirstFrame(ds);
+            if (img != null) return img;
+
+            // Fallback auf manuelles Decoding nur wenn wirklich nötig – hier ausgelassen,
+            // weil RenderImage bereits der verlässlichere Weg ist.
+            return null;
+        }
+
+        private static ImageSource? TryRenderFirstFrame(DicomDataset ds)
+        {
+            try
+            {
+                if (!ds.Contains(DicomTag.PixelData)) return null;
+                var px = DicomPixelData.Create(ds);
+                if (px == null || px.NumberOfFrames == 0) return null;
+
+                var di = new DicomImage(ds);
+                using var rendered = di.RenderImage(0);
+                using var sharp = rendered.AsSharpImage();
+                using var ms = new MemoryStream();
+                sharp.Save(ms, new PngEncoder());
+                var bytes = ms.ToArray();
+                return ImageSource.FromStream(() => new MemoryStream(bytes));
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        // ---------- Helpers ----------
 
         private static string ReadValueSafe(DicomItem item)
         {
@@ -107,276 +392,11 @@ namespace DViewer
             catch { return string.Empty; }
         }
 
-        //public async Task<DicomFileViewModel?> PickAndLoadAsync(CancellationToken ct = default)
-        //{
-        //    try
-        //    {
-        //        var pick = await Microsoft.Maui.Storage.FilePicker.Default.PickAsync(
-        //            new Microsoft.Maui.Storage.PickOptions { PickerTitle = "DICOM-Datei auswählen" });
-        //        if (pick == null) return null;
-
-        //        var path = pick.FullPath ?? pick.FileName;
-        //        return await LoadAsync(path, ct).ConfigureAwait(false);
-        //    }
-        //    catch { return null; }
-        //}
-
-        public async Task<DicomFileViewModel> LoadAsync(string path, CancellationToken ct = default)
-        {
-            return await Task.Run(() =>
-            {
-                ct.ThrowIfCancellationRequested();
-
-                var vm = new DicomFileViewModel
-                {
-                    FileName = System.IO.Path.GetFileName(path),
-                    Image = null
-                };
-
-                var list = new List<DicomMetadataItem>();
-
-                try
-                {
-                    var dicom = DicomFile.Open(path);
-                    var ds = dicom.Dataset;
-
-                    foreach (var item in ds)
-                    {
-                        ct.ThrowIfCancellationRequested();
-                        try
-                        {
-                            var tag = item.Tag;
-                            var name = tag.DictionaryEntry?.Name ?? string.Empty;
-                            var vr = item.ValueRepresentation?.Code ?? item.ValueRepresentation?.ToString() ?? string.Empty;
-                            var val = ReadValueSafe(item);
-
-                            list.Add(new DicomMetadataItem
-                            {
-                                TagId = tag.ToString(),
-                                Name = name,
-                                Vr = vr,
-                                Value = val
-                            });
-                        }
-                        catch { /* Einzelnes Element überspringen */ }
-                    }
-
-                    vm.SetMetadata(list);
-
-                    // ===== manuelle Vorschau (plattformübergreifend)
-                    try
-                    {
-                        vm.Image = BuildPreviewImageSource(ds);
-                    }
-                    catch
-                    {
-                        vm.Image = null; // Vorschau optional
-                    }
-                }
-                catch
-                {
-                    vm.SetMetadata(Array.Empty<DicomMetadataItem>());
-                    vm.Image = null;
-                }
-
-                return vm;
-            }, ct).ConfigureAwait(false);
-        }
-
-        // --------------------------------------------------------------------
-        // Preview: DICOM -> ImageSharp -> MAUI ImageSource
-        // --------------------------------------------------------------------
-        private static ImageSource? BuildPreviewImageSource(DicomDataset ds)
-        {
-            if (!ds.Contains(DicomTag.PixelData)) return null;
-
-            // Rohdaten besorgen
-            var px = DicomPixelData.Create(ds);
-            if (px == null || px.NumberOfFrames == 0) return null;
-
-            // Frame 0
-            var frame = px.GetFrame(0);                  // IByteBuffer
-            var raw = frame.Data;                      // byte[]
-            if (raw == null || raw.Length == 0) return null;
-
-            int width = px.Width;
-            int height = px.Height;
-
-            // Zielbild (RGBA)
-            using var img = new Image<Rgba32>(width, height);
-
-            // Rescale (optional)
-            double slope = GetDouble(ds, DicomTag.RescaleSlope) ?? 1.0;
-            double intercept = GetDouble(ds, DicomTag.RescaleIntercept) ?? 0.0;
-
-            // Windowing (optional, erste Werte verwenden)
-            var (wc, ww) = GetWindow(ds);
-
-            var photo = px.PhotometricInterpretation?.Value?.ToUpperInvariant() ?? "MONOCHROME2";
-            int spp = px.SamplesPerPixel;
-            int bits = px.BitsAllocated;
-            // Enum: FellowOakDicom.Imaging.PlanarConfiguration
-            var planarConfig = px.PlanarConfiguration;
-            bool isPlanar = planarConfig == PlanarConfiguration.Planar; // true => RRR..GGG..BBB..
-
-            // Helper für Min/Max-Stretch bei 16-bit wenn kein WC/WW gesetzt ist
-            (ushort min16, ushort max16) = ComputeMinMax16(raw, bits, spp);
-
-            if (spp == 1) // Grauwert
-            {
-                if (bits == 8)
-                {
-                    bool invert = photo.Contains("MONOCHROME1");
-                    int index = 0;
-
-                    img.ProcessPixelRows(accessor =>
-                    {
-                        for (int y = 0; y < height; y++)
-                        {
-                            var span = accessor.GetRowSpan(y);
-                            for (int x = 0; x < width; x++)
-                            {
-                                byte g = raw[index++];
-                                if (wc.HasValue && ww.HasValue)
-                                    g = Window8(g, wc.Value, ww.Value, invert);
-                                else if (invert)
-                                    g = (byte)(255 - g);
-
-                                span[x] = new Rgba32(g, g, g, 255);
-                            }
-                        }
-                    });
-                }
-                else if (bits == 16)
-                {
-                    bool invert = photo.Contains("MONOCHROME1");
-                    bool le = BitConverter.IsLittleEndian;
-
-                    int index = 0;
-                    img.ProcessPixelRows(accessor =>
-                    {
-                        for (int y = 0; y < height; y++)
-                        {
-                            var span = accessor.GetRowSpan(y);
-                            for (int x = 0; x < width; x++)
-                            {
-                                // ushort in little-endian
-                                ushort v = le
-                                    ? (ushort)(raw[index] | (raw[index + 1] << 8))
-                                    : (ushort)((raw[index] << 8) | raw[index + 1]);
-                                index += 2;
-
-                                // Rescale
-                                double dv = v * slope + intercept;
-
-                                byte g = (wc.HasValue && ww.HasValue)
-                                    ? Window16To8(dv, wc.Value, ww.Value, invert)
-                                    : Stretch16To8(v, min16, max16, invert);
-
-                                span[x] = new Rgba32(g, g, g, 255);
-                            }
-                        }
-                    });
-                }
-                else
-                {
-                    return null; // ungehandelt
-                }
-            }
-            else if (spp == 3) // Farbe
-            {
-                if (photo.Contains("RGB"))
-                {
-                    if (bits != 8) return null;
-
-                    if (!isPlanar) // interleaved RGBRGB...
-                    {
-                        int index = 0;
-                        img.ProcessPixelRows(accessor =>
-                        {
-                            for (int y = 0; y < height; y++)
-                            {
-                                var span = accessor.GetRowSpan(y);
-                                for (int x = 0; x < width; x++)
-                                {
-                                    byte r = raw[index++];
-                                    byte g = raw[index++];
-                                    byte b = raw[index++];
-                                    span[x] = new Rgba32(r, g, b, 255);
-                                }
-                            }
-                        });
-                    }
-                    else // planar: RRR.. GGG.. BBB..
-                    {
-                        int plane = width * height;
-                        int rOff = 0;
-                        int gOff = plane;
-                        int bOff = plane * 2;
-
-                        img.ProcessPixelRows(accessor =>
-                        {
-                            for (int y = 0; y < height; y++)
-                            {
-                                var span = accessor.GetRowSpan(y);
-                                for (int x = 0; x < width; x++)
-                                {
-                                    int p = y * width + x;
-                                    span[x] = new Rgba32(raw[rOff + p], raw[gOff + p], raw[bOff + p], 255);
-                                }
-                            }
-                        });
-                    }
-                }
-                else if (photo.Contains("YBR_FULL"))
-                {
-                    if (bits != 8) return null;
-
-                    // interleaved Y Cb Cr
-                    int index = 0;
-                    img.ProcessPixelRows(accessor =>
-                    {
-                        for (int y = 0; y < height; y++)
-                        {
-                            var span = accessor.GetRowSpan(y);
-                            for (int x = 0; x < width; x++)
-                            {
-                                int Y = raw[index++];       // 0..255
-                                int Cb = raw[index++] - 128; // -128..127
-                                int Cr = raw[index++] - 128;
-
-                                int r = Clamp255(Y + (int)(1.402 * Cr));
-                                int g = Clamp255(Y - (int)(0.344136 * Cb) - (int)(0.714136 * Cr));
-                                int b = Clamp255(Y + (int)(1.772 * Cb));
-                                span[x] = new Rgba32((byte)r, (byte)g, (byte)b, 255);
-                            }
-                        }
-                    });
-                }
-                else
-                {
-                    return null; // andere Photometric nicht behandelt
-                }
-            }
-            else
-            {
-                return null; // nicht unterstützt
-            }
-
-
-            // -> PNG in Stream, dann als ImageSource
-            using var ms = new MemoryStream();
-            img.Save(ms, new PngEncoder());
-            var bytes = ms.ToArray();
-
-            return ImageSource.FromStream(() => new MemoryStream(bytes));
-        }
-
-        // ----------- Helpers -------------------------------------------------
+        private static bool IsOverlayData(DicomItem it) =>
+            it.Tag.Group >= 0x6000 && it.Tag.Group <= 0x60FF && it.Tag.Element == 0x3000;
 
         private static (double? wc, double? ww) GetWindow(DicomDataset ds)
         {
-            // Ersten Wert nehmen, falls multi-valued
             try
             {
                 var centers = ds.GetValues<double>(DicomTag.WindowCenter);
@@ -384,68 +404,73 @@ namespace DViewer
                 if (centers?.Length > 0 && widths?.Length > 0)
                     return (centers[0], widths[0]);
             }
-            catch { /* egal */ }
+            catch { }
             return (null, null);
         }
 
-        private static double? GetDouble(DicomDataset ds, DicomTag tag)
+        private static double? GetFps(DicomDataset ds)
         {
-            try { return ds.GetSingleValue<double>(tag); } catch { return null; }
-        }
-
-        private static (ushort min, ushort max) ComputeMinMax16(byte[] raw, int bitsAllocated, int spp)
-        {
-            if (bitsAllocated != 16) return (0, 0);
-            int stride = 2 * spp;
-            ushort min = ushort.MaxValue, max = ushort.MinValue;
-            for (int i = 0; i < raw.Length; i += stride)
+            try
             {
-                ushort v = (ushort)(raw[i] | (raw[i + 1] << 8));
-                if (v < min) min = v;
-                if (v > max) max = v;
+                // (0018,1063) FrameTime in ms
+                if (ds.TryGetSingleValue<double>(DicomTag.FrameTime, out var frameTimeMs) && frameTimeMs > 0.0)
+                    return 1000.0 / frameTimeMs;
             }
-            if (min == max) { min = 0; max = 0xFFFF; }
-            return (min, max);
+            catch { }
+
+            try
+            {
+                // (0018,0040) Cine Rate in fps
+                if (ds.TryGetSingleValue<double>(DicomTag.CineRate, out var cine) && cine > 0.0)
+                    return cine;
+            }
+            catch { }
+
+            return null;
         }
 
-        private static byte Stretch16To8(ushort v, ushort min, ushort max, bool invert)
+        // ---------- optionale ViewModel-Integration (fail-safe via Reflection) ----------
+
+        private static void TrySetFramesOnVm(object vm, IReadOnlyList<ImageSource>? frames, double? fps)
         {
-            if (max <= min) return (byte)(invert ? 255 : 0);
-            int val = (int)((v - min) * 255.0 / (max - min));
-            if (val < 0) val = 0; if (val > 255) val = 255;
-            return invert ? (byte)(255 - val) : (byte)val;
+            try
+            {
+                var mi = vm.GetType().GetMethod("SetFrames", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                if (mi != null)
+                {
+                    // Signatur erwartet (IReadOnlyList<ImageSource>?, double?)
+                    mi.Invoke(vm, new object?[] { frames, fps });
+                }
+            }
+            catch { /* optional */ }
         }
 
-        private static byte Window16To8(double value, double wc, double ww, bool invert)
+        private static void TrySetVideoOnVm(object vm, string path, string? mime)
         {
-            // DICOM Windowing (typisch)
-            double lo = wc - 0.5 - (ww - 1) / 2.0;
-            double hi = wc - 0.5 + (ww - 1) / 2.0;
-            double y;
-            if (value <= lo) y = 0;
-            else if (value > hi) y = 255;
-            else y = ((value - (wc - 0.5)) / (ww - 1) + 0.5) * 255.0;
+            try
+            {
+                // bevorzugt eine Methode SetVideo(string? path, string? mime)
+                var mi = vm.GetType().GetMethod("SetVideo", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                if (mi != null)
+                {
+                    mi.Invoke(vm, new object?[] { path, mime });
+                    return;
+                }
 
-            if (y < 0) y = 0; if (y > 255) y = 255;
-            return invert ? (byte)(255 - (byte)y) : (byte)y;
+                // alternativ Properties direkt setzen, falls vorhanden
+                var pPath = vm.GetType().GetProperty("VideoTempPath", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                var pMime = vm.GetType().GetProperty("VideoMime", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+
+                pPath?.SetValue(vm, path);
+                pMime?.SetValue(vm, mime);
+
+                // HasVideo o.ä. ist üblicherweise computed; ansonsten PropertyChanged selbst raisen
+                var onPc = vm.GetType().GetMethod("OnPropertyChanged", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                onPc?.Invoke(vm, new object?[] { "VideoTempPath" });
+                onPc?.Invoke(vm, new object?[] { "VideoMime" });
+                onPc?.Invoke(vm, new object?[] { "HasVideo" });
+            }
+            catch { /* optional */ }
         }
-
-        private static byte Window8(byte g, double wc, double ww, bool invert)
-        {
-            // 8-bit: einfache WC/WW – skaliert den 0..255-Bereich
-            double lo = wc - 0.5 - (ww - 1) / 2.0;
-            double hi = wc - 0.5 + (ww - 1) / 2.0;
-            double val = g;
-
-            double y;
-            if (val <= lo) y = 0;
-            else if (val > hi) y = 255;
-            else y = ((val - (wc - 0.5)) / (ww - 1) + 0.5) * 255.0;
-
-            if (y < 0) y = 0; if (y > 255) y = 255;
-            return invert ? (byte)(255 - (byte)y) : (byte)y;
-        }
-
-        private static int Clamp255(int v) => v < 0 ? 0 : (v > 255 ? 255 : v);
     }
 }
