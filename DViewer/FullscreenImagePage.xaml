@@ -6,15 +6,105 @@
     BackgroundColor="Black">
 
     <Grid x:Name="Root" BackgroundColor="Black">
-        <!-- Bild -->
-        <Image x:Name="Img" Aspect="AspectFit" HorizontalOptions="Center" VerticalOptions="Center" />
 
-        <!-- Gesten: 1x Tippen = schließen, 2x = reset Zoom, Pinch & Pan -->
+        <!-- image -->
+        <Image x:Name="Img"
+               Aspect="AspectFit"
+               HorizontalOptions="Center"
+               VerticalOptions="Center" />
+
+        <!-- PATIENT OVERLAY (top-left, like preview) -->
+        <Grid HorizontalOptions="Start"
+              VerticalOptions="Start"
+              Margin="12,12,12,12"
+              Padding="10"
+              BackgroundColor="#66000000"
+              MaximumWidthRequest="600"
+              InputTransparent="True">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Patient (with sex) -->
+            <Label Grid.Row="0"
+                   Text="{Binding PatientNameWithSex}"
+                   FontAttributes="Bold" TextColor="White"
+                   LineBreakMode="TailTruncation" MaxLines="1"/>
+
+            <!-- Species / Breed (we just show Species string you pass in) -->
+            <Grid Grid.Row="1" ColumnDefinitions="Auto,*" ColumnSpacing="6">
+                <Label Grid.Column="0" Text="Species" FontAttributes="Italic" TextColor="#DDFFFFFF"/>
+                <Label Grid.Column="1" Text="{Binding Species}" TextColor="White"
+                       LineBreakMode="TailTruncation" MaxLines="1"/>
+            </Grid>
+
+            <!-- PID -->
+            <Grid Grid.Row="2" ColumnDefinitions="Auto,*" ColumnSpacing="6">
+                <Label Grid.Column="0" Text="PID" FontAttributes="Italic" TextColor="#DDFFFFFF"/>
+                <Label Grid.Column="1" Text="{Binding PatientID}" TextColor="White"
+                       LineBreakMode="TailTruncation" MaxLines="1"/>
+            </Grid>
+
+            <!-- DOB -->
+            <Grid Grid.Row="3" ColumnDefinitions="Auto,*" ColumnSpacing="6">
+                <Label Grid.Column="0" Text="DOB" FontAttributes="Italic" TextColor="#DDFFFFFF"/>
+                <Label Grid.Column="1" Text="{Binding BirthDateDisplay}" TextColor="White"/>
+            </Grid>
+
+            <!-- Other PID -->
+            <Grid Grid.Row="4" ColumnDefinitions="Auto,*" ColumnSpacing="6">
+                <Label Grid.Column="0" Text="Other PID" FontAttributes="Italic" TextColor="#DDFFFFFF"/>
+                <Label Grid.Column="1" Text="{Binding OtherPid}" TextColor="White"
+                       LineBreakMode="TailTruncation" MaxLines="1"/>
+            </Grid>
+        </Grid>
+
+        <!-- WINDOW/LEVEL READOUT (right side) -->
+        <Grid HorizontalOptions="End"
+              VerticalOptions="Center"
+              Margin="12"
+              Padding="12"
+              BackgroundColor="#66000000"
+              InputTransparent="True">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <Label Grid.Row="0" Text="Window / Level"
+                   FontAttributes="Bold" TextColor="White" />
+            <Grid Grid.Row="1" ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                <Label Grid.Column="0" Text="Center" TextColor="#DDFFFFFF" />
+                <Label Grid.Column="1"
+                       Text="{Binding WindowCenter, StringFormat='{}{0:0}'}"
+                       TextColor="White"/>
+            </Grid>
+            <Grid Grid.Row="2" ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                <Label Grid.Column="0" Text="Width"  TextColor="#DDFFFFFF" />
+                <Label Grid.Column="1"
+                       Text="{Binding WindowWidth, StringFormat='{}{0:0}'}"
+                       TextColor="White"/>
+            </Grid>
+        </Grid>
+
+        <!-- GESTURES -->
         <Grid.GestureRecognizers>
+            <!-- tap: close -->
             <TapGestureRecognizer NumberOfTapsRequired="1" Tapped="OnCloseTapped" />
+            <!-- double tap: reset zoom -->
             <TapGestureRecognizer NumberOfTapsRequired="2" Tapped="OnDoubleTapped" />
+            <!-- pinch to zoom -->
             <PinchGestureRecognizer PinchUpdated="OnPinchUpdated" />
-            <PanGestureRecognizer PanUpdated="OnPanUpdated" />
+            <!-- 1-finger pan to move image when zoomed -->
+            <PanGestureRecognizer PanUpdated="OnPanUpdated" TouchPoints="1" />
+            <!-- 2-finger pan to change window/level -->
+            <PanGestureRecognizer PanUpdated="OnWlPanUpdated" TouchPoints="2" />
         </Grid.GestureRecognizers>
+
     </Grid>
 </ContentPage>

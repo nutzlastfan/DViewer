@@ -63,7 +63,7 @@
                     <!-- Video nur wenn vorhanden -->
                     <toolkit:MediaElement HeightRequest="500" IsVisible="{Binding LeftHasVideo}"
                 Source="{Binding LeftVideoSource}"
-                 ShouldAutoPlay="True" ShouldShowPlaybackControls="True" />
+                 ShouldAutoPlay="True" ShouldShowPlaybackControls="True" ShouldLoopPlayback="True" />
 
                     <!-- Multiframe-Steuerleiste -->
                     <Grid IsVisible="{Binding LeftHasMultiFrame}" Padding="8" VerticalOptions="End">
@@ -141,11 +141,35 @@
             <!-- RECHTS -->
             <Frame Grid.Column="1" HasShadow="True" CornerRadius="6" Padding="0">
                 <Grid>
-                    <Image Source="{Binding Right.Image}" Aspect="AspectFit" HeightRequest="500">
+                    <!-- Bild nur wenn kein Video -->
+                    <Image HeightRequest="500" IsVisible="{Binding RightHasVideo, Converter={StaticResource InverseBoolConverter}}"
+         Source="{Binding Right.Image}" Aspect="AspectFit">
                         <Image.GestureRecognizers>
                             <TapGestureRecognizer Tapped="OnRightPreviewTapped" />
                         </Image.GestureRecognizers>
                     </Image>
+
+                    <!-- Video nur wenn vorhanden -->
+                    <toolkit:MediaElement HeightRequest="500" IsVisible="{Binding RightHasVideo}"
+                Source="{Binding RightVideoSource}"
+                 ShouldAutoPlay="True" ShouldShowPlaybackControls="True" ShouldLoopPlayback="True" />
+
+                    <!-- Multiframe-Steuerleiste -->
+                    <Grid IsVisible="{Binding RightHasMultiFrame}" Padding="8" VerticalOptions="End">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Button Text="⏮" Command="{Binding RightPrevFrameCommand}" />
+                        <Slider Grid.Column="1"
+            Minimum="0" Maximum="{Binding RightFrameCount, Converter={StaticResource MinusOneConverter}}"
+            Value="{Binding RightFrameIndex, Mode=TwoWay}"/>
+                        <Button Grid.Column="2" Text="⏭" Command="{Binding RightNextFrameCommand}" />
+                        <Button Grid.Column="3" Text="{Binding RightIsPlaying, Converter={StaticResource PlayPauseTextConverter}}"
+            Command="{Binding RightPlayPauseCommand}"/>
+                    </Grid>
 
                     <Button Text="R"
                             CornerRadius="18" WidthRequest="36" HeightRequest="36"
@@ -239,75 +263,92 @@
             </Frame>
 
             <!-- Vergleich (rechts) -->
+            <!-- Vergleich (rechts) -->
             <Frame Grid.Column="1" HasShadow="True" CornerRadius="6" Padding="0">
-                <Grid RowDefinitions="Auto,*">
+                <!-- One grid controls header + list with 4 shared columns -->
+                <Grid RowDefinitions="Auto,*" ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="{Binding TagWidth,  Converter={StaticResource StarConverter}}"/>
+                        <ColumnDefinition Width="{Binding NameWidth, Converter={StaticResource StarConverter}}"/>
+                        <ColumnDefinition Width="{Binding LeftWidth, Converter={StaticResource StarConverter}}"/>
+                        <ColumnDefinition Width="{Binding RightWidth,Converter={StaticResource StarConverter}}"/>
+                    </Grid.ColumnDefinitions>
 
-                    <!-- Kopf: Sort-Buttons + Add(+) je Spalte (Links/Rechts) -->
-                    <Grid RowDefinitions="Auto"
-                          ColumnDefinitions="0.1*,0.2*,*,*"
-                          Padding="8" BackgroundColor="#2D2D2D" ColumnSpacing="8">
+                    <!-- HEADER (no nested grid) -->
+                    <Button Grid.Row="0" Grid.Column="0" Text="{Binding TagHeaderText}"
+                Clicked="OnSortClicked" CommandParameter="TagId" TextColor="White" />
+                    <Button Grid.Row="0" Grid.Column="1" Text="{Binding NameHeaderText}"
+                Clicked="OnSortClicked" CommandParameter="Name" TextColor="White" />
+                    <Button Grid.Row="0" Grid.Column="2" Text="{Binding LeftHeaderText}"
+                Clicked="OnSortClicked" CommandParameter="LeftValue" TextColor="White" />
+                    <Button Grid.Row="0" Grid.Column="3" Text="{Binding RightHeaderText}"
+                Clicked="OnSortClicked" CommandParameter="RightValue" TextColor="White" />
 
-                        <!-- Tag / Name -->
-                        <Button Grid.Column="0" Text="{Binding TagHeaderText}"
-                                Clicked="OnSortClicked" CommandParameter="TagId"
-                                TextColor="White" />
-                        <Button Grid.Column="1" Text="{Binding NameHeaderText}"
-                                Clicked="OnSortClicked" CommandParameter="Name"
-                                TextColor="White" />
-
-                        <!-- Links-Header + Add -->
-                        <Grid Grid.Column="2" ColumnDefinitions="*,Auto">
-                            <Button Grid.Column="0" Text="{Binding LeftHeaderText}"
-                                    Clicked="OnSortClicked" CommandParameter="LeftValue"
-                                    TextColor="White" />
-                            <Button Grid.Column="1" Style="{StaticResource FabSmall}"
-                                    Text="+" Margin="8,0,0,0"
-                                    AutomationProperties.Name="Tag zu LINKS hinzufügen"
-                                    Clicked="OnAddTagLeftOverlayClicked" />
-                        </Grid>
-
-                        <!-- Rechts-Header + Add -->
-                        <Grid Grid.Column="3" ColumnDefinitions="*,Auto">
-                            <Button Grid.Column="0" Text="{Binding RightHeaderText}"
-                                    Clicked="OnSortClicked" CommandParameter="RightValue"
-                                    TextColor="White" />
-                            <Button Grid.Column="1" Style="{StaticResource FabSmall}"
-                                    Text="+" Margin="8,0,0,0"
-                                    AutomationProperties.Name="Tag zu RECHTS hinzufügen"
-                                    Clicked="OnAddTagRightOverlayClicked" />
-                        </Grid>
-                    </Grid>
-
-                    <!-- Liste -->
-                    <CollectionView Grid.Row="1"
-                                    ItemsSource="{Binding FilteredItems}"
-                                    SelectionMode="Single"
-                                    SelectionChanged="OnCombinedSelectionChanged">
+                    <!-- LIST -->
+                    <CollectionView Grid.Row="1" Grid.ColumnSpan="4"
+                        ItemsSource="{Binding FilteredItems}"
+                        SelectionMode="Single"
+                        SelectionChanged="OnCombinedSelectionChanged">
                         <CollectionView.ItemTemplate>
                             <DataTemplate>
-                                <Grid Padding="4" ColumnDefinitions="0.1*,0.2*,0.4*,0.4*" RowDefinitions="Auto"
-                                      BackgroundColor="{Binding IsAlternate, Converter={StaticResource AltBgConverter}}">
-                                    <Label Grid.Column="0" Text="{Binding TagId}"   VerticalTextAlignment="Center" FontAttributes="Bold" Margin="4,0" />
-                                    <Label Grid.Column="1" Text="{Binding Name}"    VerticalTextAlignment="Center" LineBreakMode="TailTruncation" Margin="4,0" />
+                                <Grid Padding="4"
+                          BackgroundColor="{Binding IsAlternate, Converter={StaticResource AltBgConverter}}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="{Binding BindingContext.TagWidth,  Source={x:Reference RootPage}, Converter={StaticResource StarConverter}}"/>
+                                        <ColumnDefinition Width="{Binding BindingContext.NameWidth, Source={x:Reference RootPage}, Converter={StaticResource StarConverter}}"/>
+                                        <ColumnDefinition Width="{Binding BindingContext.LeftWidth, Source={x:Reference RootPage}, Converter={StaticResource StarConverter}}"/>
+                                        <ColumnDefinition Width="{Binding BindingContext.RightWidth,Source={x:Reference RootPage}, Converter={StaticResource StarConverter}}"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <Label Grid.Column="0" Text="{Binding TagId}" VerticalTextAlignment="Center"
+                               FontAttributes="Bold" Margin="4,0"/>
+                                    <Label Grid.Column="1" Text="{Binding Name}" VerticalTextAlignment="Center"
+                               LineBreakMode="TailTruncation" Margin="4,0"/>
 
                                     <!-- Links -->
                                     <Entry x:Name="LeftValueEntry" Grid.Column="2" Margin="2,0"
-                                           Text="{Binding LeftText, Mode=TwoWay,
-                                                  Converter={StaticResource OnlyWhenFocusedConverter},
-                                                  ConverterParameter={Binding Source={x:Reference LeftValueEntry}, Path=IsFocused}}" />
+                               Text="{Binding LeftText, Mode=TwoWay,
+                                      Converter={StaticResource OnlyWhenFocusedConverter},
+                                      ConverterParameter={Binding Source={x:Reference LeftValueEntry}, Path=IsFocused}}"/>
 
                                     <!-- Rechts -->
                                     <Entry x:Name="RightValueEntry" Grid.Column="3" Margin="2,0"
-                                           Text="{Binding RightText, Mode=TwoWay,
-                                                  Converter={StaticResource OnlyWhenFocusedConverter},
-                                                  ConverterParameter={Binding Source={x:Reference RightValueEntry}, Path=IsFocused}}" />
+                               Text="{Binding RightText, Mode=TwoWay,
+                                      Converter={StaticResource OnlyWhenFocusedConverter},
+                                      ConverterParameter={Binding Source={x:Reference RightValueEntry}, Path=IsFocused}}"/>
                                 </Grid>
                             </DataTemplate>
                         </CollectionView.ItemTemplate>
                     </CollectionView>
 
+                    <!-- OVERLAYS (RowSpan=2 so they sit above header + list) -->
+
+                    <!-- LEFT column overlays -->
+                    <Button Grid.Row="0" Grid.RowSpan="2" Grid.Column="2" ZIndex="10"
+                Style="{StaticResource FabSmall}" Text="+"
+                Margin="0,0,02,0" HorizontalOptions="End" VerticalOptions="Start"
+                AutomationProperties.Name="Tag zu LINKS hinzufügen"
+                Clicked="OnAddTagLeftOverlayClicked"/>
+                    <Button Grid.Row="0" Grid.RowSpan="2" Grid.Column="2" ZIndex="10"
+                Style="{StaticResource FabSmall}" Text="💾"
+                Margin="0,0,50,0" HorizontalOptions="End" VerticalOptions="Start"
+                AutomationProperties.Name="LINKS speichern"
+                Clicked="OnSaveLeftClicked"/>
+
+                    <!-- RIGHT column overlays -->
+                    <Button Grid.Row="0" Grid.RowSpan="2" Grid.Column="3" ZIndex="10"
+                Style="{StaticResource FabSmall}" Text="+"
+                Margin="0,0,02,0" HorizontalOptions="End" VerticalOptions="Start"
+                AutomationProperties.Name="Tag zu RECHTS hinzufügen"
+                Clicked="OnAddTagRightOverlayClicked"/>
+                    <Button Grid.Row="0" Grid.RowSpan="2" Grid.Column="3" ZIndex="10"
+                Style="{StaticResource FabSmall}" Text="💾"
+                Margin="0,0,50,0" HorizontalOptions="End" VerticalOptions="Start"
+                AutomationProperties.Name="RECHTS speichern"
+                Clicked="OnSaveRightClicked"/>
                 </Grid>
             </Frame>
+
         </Grid>
     </Grid>
 </ContentPage>

@@ -127,19 +127,45 @@ namespace DViewer
         // --- Preview-Tap links ---
         private async void OnLeftPreviewTapped(object? sender, TappedEventArgs e)
         {
-            if (VM?.Left?.Image != null)
+            var vm = VM;
+            if (vm?.Left?.Image == null) return;
+
+            try
             {
-                try
-                {
-                    await Navigation.PushAsync(new ContentPage
-                    {
-                        Content = new Image { Source = VM.Left.Image, Aspect = Aspect.AspectFit },
-                        Title = "Vorschau Links"
-                    });
-                }
-                catch { /* still */ }
+                await Navigation.PushModalAsync(
+                    new FullscreenImagePage(
+                        source: vm.Left.Image,
+                        title: "Left",
+                        patientNameWithSex: vm.LeftPatientNameWithSex,
+                        species: vm.LeftSpecies,
+                        patientId: vm.LeftPatientID,
+                        birthDateDisplay: vm.LeftBirthDateDisplay,
+                        otherPid: vm.LeftOtherPid));
             }
+            catch { /* still */ }
         }
+
+        // --- Preview-Tap rechts ---
+        private async void OnRightPreviewTapped(object? sender, TappedEventArgs e)
+        {
+            var vm = VM;
+            if (vm?.Right?.Image == null) return;
+
+            try
+            {
+                await Navigation.PushModalAsync(
+                    new FullscreenImagePage(
+                        source: vm.Right.Image,
+                        title: "Right",
+                        patientNameWithSex: vm.RightPatientNameWithSex,
+                        species: vm.RightSpecies,
+                        patientId: vm.RightPatientID,
+                        birthDateDisplay: vm.RightBirthDateDisplay,
+                        otherPid: vm.RightOtherPid));
+            }
+            catch { /* still */ }
+        }
+
 
         // Add-Tag Overlay (Links)
         private async void OnAddTagLeftOverlayClicked(object? sender, EventArgs e)
@@ -157,22 +183,32 @@ namespace DViewer
             await DisplayAlert("Tag hinzufügen", "Neuen DICOM-Tag für RECHTS hinzufügen (Verdrahtung folgt).", "OK");
         }
 
-        // --- Preview-Tap rechts ---
-        private async void OnRightPreviewTapped(object? sender, TappedEventArgs e)
+        private void OnSaveLeftClicked(object sender, EventArgs e)
         {
-            if (VM?.Right?.Image != null)
-            {
-                try
-                {
-                    await Navigation.PushAsync(new ContentPage
-                    {
-                        Content = new Image { Source = VM.Right.Image, Aspect = Aspect.AspectFit },
-                        Title = "Vorschau Rechts"
-                    });
-                }
-                catch { /* still */ }
-            }
+            // TODO: save left side
         }
+
+        private void OnSaveRightClicked(object sender, EventArgs e)
+        {
+            // TODO: save right side
+        }
+
+        // --- Preview-Tap rechts ---
+        //private async void OnRightPreviewTapped(object? sender, TappedEventArgs e)
+        //{
+        //    if (VM?.Right?.Image != null)
+        //    {
+        //        try
+        //        {
+        //            await Navigation.PushAsync(new ContentPage
+        //            {
+        //                Content = new Image { Source = VM.Right.Image, Aspect = Aspect.AspectFit },
+        //                Title = "Vorschau Rechts"
+        //            });
+        //        }
+        //        catch { /* still */ }
+        //    }
+        //}
 
         // --- (Optional) Toolbar: "DICOM-Tag hinzufügen" ---
         // Hier nur Platzhalter – wenn dein vorhandener Dialog ein Ergebnis (DicomTagCandidate)

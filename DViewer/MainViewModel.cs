@@ -365,12 +365,17 @@ namespace DViewer
             using (UIUpdateGuard.Begin())
             {
                 if (isLeft) Left = vm; else Right = vm;
-                OnPropertyChanged(nameof(Left));
-                OnPropertyChanged(nameof(Right));
+                //OnPropertyChanged(nameof(Left));
+                //OnPropertyChanged(nameof(Right));
+
+                // Nur die geänderte Seite notifyen ist sauberer, beides geht aber auch.
+                OnPropertyChanged(isLeft ? nameof(Left) : nameof(Right));
+
+
                 RaiseOverlayChanged();
                 RebuildCombined();
-                RaiseMediaChanged(true);                 // <-- NEU
-                ResetMediaStateForSide(vm, true);
+                RaiseMediaChanged(isLeft);
+                ResetMediaStateForSide(vm, isLeft);
             }
         }
 
@@ -383,16 +388,29 @@ namespace DViewer
 
             MainThread.BeginInvokeOnMainThread(() =>
             {
+
                 using (UIUpdateGuard.Begin())
                 {
-                    if (toLeft) Left = vm; else Right = vm;
-                    OnPropertyChanged(nameof(Left));
-                    OnPropertyChanged(nameof(vm));
+                    if (toLeft)
+                    {
+                        Left = vm;
+                        OnPropertyChanged(nameof(Left));
+                    }
+                    else
+                    {
+                        Right = vm;
+                        OnPropertyChanged(nameof(Right));
+                    }
+
                     RaiseOverlayChanged();
                     RebuildCombined();
-                    RaiseMediaChanged(true);                 // <-- NEU
-                    ResetMediaStateForSide(vm, true);      // <-- NEU
+
+                    // ❗️WICHTIG: richtige Seite angeben
+                    RaiseMediaChanged(toLeft);
+                    ResetMediaStateForSide(vm, toLeft);
                 }
+
+
             });
         }
 
@@ -402,24 +420,36 @@ namespace DViewer
             if (string.IsNullOrWhiteSpace(path)) return;
 
             var vm = await _loader.LoadAsync(path, ct).ConfigureAwait(false);
+
+            bool changedLeft;
             if (preferLeftIfEmpty && (Left?.Metadata == null || Left.Metadata.Count == 0))
-                Left = vm;
+            {
+                Left = vm; changedLeft = true;
+            }
             else if (Right?.Metadata == null || Right.Metadata.Count == 0)
-                Right = vm;
+            {
+                Right = vm; changedLeft = false;
+            }
             else
-                Right = vm;
+            {
+                Right = vm; changedLeft = false;
+            }
 
             MainThread.BeginInvokeOnMainThread(() =>
             {
                 using (UIUpdateGuard.Begin())
                 {
-                    OnPropertyChanged(nameof(Left));
-                    OnPropertyChanged(nameof(Right));
+                    OnPropertyChanged(changedLeft ? nameof(Left) : nameof(Right));
                     RaiseOverlayChanged();
                     RebuildCombined();
+
+                    // ❗️WICHTIG: richtige Seite angeben
+                    RaiseMediaChanged(changedLeft);
+                    ResetMediaStateForSide(vm, changedLeft);
                 }
             });
         }
+
 
         // ---------- Overlay-Properties ----------
         // Links
