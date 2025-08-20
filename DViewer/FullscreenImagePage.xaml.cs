@@ -1,18 +1,25 @@
 ﻿using System;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using Microsoft.Maui.ApplicationModel;
 using Microsoft.Maui.Controls;
 
 namespace DViewer
 {
     public partial class FullscreenImagePage : ContentPage, INotifyPropertyChanged
     {
-        // --- zoom/pan state ---
+        // -------- Zoom/Pan ----------
+        const double MIN_SCALE = 1.0;
+        const double MAX_SCALE = 12.0;
+
         double _currentScale = 1;
         double _startX, _startY;
         bool _pinching;
 
-        // --- window/level state (live-bound to labels) ---
+        // -------- Window/Level ----------
+        const double WLWidthSensitivity = 2.0;  // ΔX -> ΔWidth
+        const double WLCenterSensitivity = 2.0; // ΔY -> ΔCenter
+
         double _windowCenter;
         double _windowWidth;
 
@@ -28,28 +35,31 @@ namespace DViewer
             private set { if (Math.Abs(_windowWidth - value) < double.Epsilon) return; _windowWidth = Math.Max(1, value); OnPropertyChanged(); }
         }
 
-        // sensitivity (pixels dragged -> change in WL)
-        const double WLWidthSensitivity = 2.0;  // ΔX -> ΔWidth
-        const double WLCenterSensitivity = 2.0;  // ΔY -> ΔCenter (negative moves brighten)
-
-        // renderer delegate: (center, width) -> ImageSource
-        readonly Func<double, double, ImageSource>? _renderWithWindow;
-
-        // for WL interaction
         double _wlStartCenter, _wlStartWidth;
 
-        // --- patient overlay (bind straight to the page) ---
+        // Debounce fürs WL-Rendering
+        System.Threading.CancellationTokenSource? _wlCts;
+
+        // -------- Renderer ----------
+        readonly Func<double, double, int, ImageSource>? _render3;
+        readonly Func<double, double, ImageSource>? _render2;
+        readonly int _frameIndex = 0;
+
+        // -------- Patient-Overlay ----------
         public string? PatientNameWithSex { get; }
         public string? Species { get; }
         public string? PatientID { get; }
         public string? BirthDateDisplay { get; }
         public string? OtherPid { get; }
 
-        // -------------------- CONSTRUCTORS --------------------
+        // ================== CONSTRUCTORS ==================
 
-        // 1) Simple: just show an ImageSource (zoom/pan only)
+        // A) center,width,frame
         public FullscreenImagePage(
-            ImageSource source,
+            Func<double, double, int, ImageSource> renderWithWindow,
+            double initialCenter,
+            double initialWidth,
+            int frameIndex,
             string? title = null,
             string? patientNameWithSex = null,
             string? species = null,
@@ -58,10 +68,8 @@ namespace DViewer
             string? otherPid = null)
         {
             InitializeComponent();
-            BindingContext = this;
             NavigationPage.SetHasNavigationBar(this, false);
             Title = title ?? "Vollbild";
-            Img.Source = source;
 
             PatientNameWithSex = patientNameWithSex;
             Species = species;
@@ -69,12 +77,16 @@ namespace DViewer
             BirthDateDisplay = birthDateDisplay;
             OtherPid = otherPid;
 
-            // default WL readout (not active without renderer)
-            WindowCenter = 0;
-            WindowWidth = 0;
+            _render3 = renderWithWindow;
+            _frameIndex = Math.Max(0, frameIndex);
+            WindowCenter = initialCenter;
+            WindowWidth = Math.Max(1, initialWidth);
+
+            Img.Source = _render3(WindowCenter, WindowWidth, _frameIndex);
+            BindingContext = this;
         }
 
-        // 2) Full: pass a renderer so we can re-render for Window/Level
+        // B) center,width
         public FullscreenImagePage(
             Func<double, double, ImageSource> renderWithWindow,
             double initialCenter,
@@ -87,28 +99,51 @@ namespace DViewer
             string? otherPid = null)
         {
             InitializeComponent();
-            BindingContext = this;
             NavigationPage.SetHasNavigationBar(this, false);
             Title = title ?? "Vollbild";
-
-            _renderWithWindow = renderWithWindow;
-            WindowCenter = initialCenter;
-            WindowWidth = Math.Max(1, initialWidth);
-
-            // render first frame with given WL
-            Img.Source = _renderWithWindow(WindowCenter, WindowWidth);
 
             PatientNameWithSex = patientNameWithSex;
             Species = species;
             PatientID = patientId;
             BirthDateDisplay = birthDateDisplay;
             OtherPid = otherPid;
+
+            _render2 = renderWithWindow;
+            WindowCenter = initialCenter;
+            WindowWidth = Math.Max(1, initialWidth);
+
+            Img.Source = _render2(WindowCenter, WindowWidth);
+            BindingContext = this;
         }
 
-        // -------------------- GESTURES --------------------
+        // C) statisches Bild
+        public FullscreenImagePage(
+            ImageSource source,
+            string? title = null,
+            string? patientNameWithSex = null,
+            string? species = null,
+            string? patientId = null,
+            string? birthDateDisplay = null,
+            string? otherPid = null)
+        {
+            InitializeComponent();
+            NavigationPage.SetHasNavigationBar(this, false);
+            Title = title ?? "Vollbild";
 
-        private async void OnCloseTapped(object? s, TappedEventArgs e)
-            => await Navigation.PopModalAsync();
+            PatientNameWithSex = patientNameWithSex;
+            Species = species;
+            PatientID = patientId;
+            BirthDateDisplay = birthDateDisplay;
+            OtherPid = otherPid;
+
+            Img.Source = source;
+            WindowCenter = 0;
+            WindowWidth = 0;
+            BindingContext = this;
+        }
+
+        // ================== TOUCH / TRACKPAD ==================
+        private async void OnCloseTapped(object? s, TappedEventArgs e) => await Navigation.PopModalAsync();
 
         private void OnDoubleTapped(object? s, TappedEventArgs e)
         {
@@ -129,12 +164,11 @@ namespace DViewer
                     break;
 
                 case GestureStatus.Running:
-                    var newScale = Math.Max(1, _currentScale * e.Scale);
-                    Img.Scale = newScale;
+                    Img.Scale = Math.Clamp(_currentScale * e.Scale, MIN_SCALE, MAX_SCALE);
                     break;
 
-                case GestureStatus.Completed:
                 case GestureStatus.Canceled:
+                case GestureStatus.Completed:
                     _pinching = false;
                     _currentScale = Img.Scale;
                     ClampTranslation();
@@ -144,7 +178,7 @@ namespace DViewer
 
         private void OnPanUpdated(object? s, PanUpdatedEventArgs e)
         {
-            if (_currentScale <= 1) return; // pan only when zoomed
+            if (_currentScale <= 1) return;
 
             switch (e.StatusType)
             {
@@ -152,7 +186,6 @@ namespace DViewer
                     _startX = Img.TranslationX;
                     _startY = Img.TranslationY;
                     break;
-
                 case GestureStatus.Running:
                     Img.TranslationX = _startX + e.TotalX;
                     Img.TranslationY = _startY + e.TotalY;
@@ -161,11 +194,11 @@ namespace DViewer
             }
         }
 
-        // 2-finger pan -> Window/Level
+        // 2-Finger-Pan = Window/Level (debounced)
         private void OnWlPanUpdated(object? s, PanUpdatedEventArgs e)
         {
-            if (_renderWithWindow == null) return;   // no renderer provided
-            if (_pinching) return;                   // ignore while pinching (prevents gesture conflict)
+            if (_render3 == null && _render2 == null) return;
+            if (_pinching) return;
 
             switch (e.StatusType)
             {
@@ -177,7 +210,6 @@ namespace DViewer
                 case GestureStatus.Running:
                     var newWidth = Math.Max(1, _wlStartWidth + (e.TotalX * WLWidthSensitivity));
                     var newCenter = _wlStartCenter - (e.TotalY * WLCenterSensitivity);
-
                     ApplyWindow(newCenter, newWidth);
                     break;
             }
@@ -187,11 +219,36 @@ namespace DViewer
         {
             WindowCenter = center;
             WindowWidth = width;
-
-            // re-render
-            Img.Source = _renderWithWindow!(WindowCenter, WindowWidth);
+            DebouncedRender();
         }
 
+        void DebouncedRender(int delayMs = 15)
+        {
+            if (_render3 == null && _render2 == null) return;
+
+            _wlCts?.Cancel();
+            var cts = new System.Threading.CancellationTokenSource();
+            _wlCts = cts;
+
+            MainThread.BeginInvokeOnMainThread(async () =>
+            {
+                try
+                {
+                    await System.Threading.Tasks.Task.Delay(delayMs, cts.Token);
+                    if (cts.IsCancellationRequested) return;
+
+                    if (_render3 != null) Img.Source = _render3(WindowCenter, WindowWidth, _frameIndex);
+                    else Img.Source = _render2!(WindowCenter, WindowWidth);
+                }
+                catch { /* noop */ }
+                finally
+                {
+                    if (ReferenceEquals(_wlCts, cts)) _wlCts = null;
+                }
+            });
+        }
+
+        // Begrenzung der Verschiebung
         void ClampTranslation()
         {
             if (_currentScale <= 1)
@@ -220,3 +277,118 @@ namespace DViewer
             => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
     }
 }
+
+// ================== WINDOWS: Maus (Links=WL, Rechts=Zoom to cursor) ==================
+#if WINDOWS
+namespace DViewer
+{
+    public partial class FullscreenImagePage
+    {
+        Microsoft.UI.Xaml.FrameworkElement? _winRoot;
+        bool _winLeftDown, _winRightDown;
+        Microsoft.Maui.Graphics.Point _winStart;
+        double _winZoomStart;
+
+        protected override void OnHandlerChanged()
+        {
+            base.OnHandlerChanged();
+
+            if (_winRoot is not null)
+            {
+                _winRoot.PointerPressed  -= OnWinPointerPressed;
+                _winRoot.PointerMoved    -= OnWinPointerMoved;
+                _winRoot.PointerReleased -= OnWinPointerReleased;
+                _winRoot.PointerCanceled -= OnWinPointerReleased;
+                _winRoot.PointerExited   -= OnWinPointerReleased;
+            }
+
+            _winRoot = this.Root?.Handler?.PlatformView as Microsoft.UI.Xaml.FrameworkElement;
+            if (_winRoot is null) return;
+
+            _winRoot.PointerPressed  += OnWinPointerPressed;
+            _winRoot.PointerMoved    += OnWinPointerMoved;
+            _winRoot.PointerReleased += OnWinPointerReleased;
+            _winRoot.PointerCanceled += OnWinPointerReleased;
+            _winRoot.PointerExited   += OnWinPointerReleased;
+        }
+
+        void OnWinPointerPressed(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+        {
+            if (_winRoot is null) return;
+
+            var pt    = e.GetCurrentPoint(_winRoot);
+            var props = pt.Properties;
+
+            _winLeftDown  = props.IsLeftButtonPressed;
+            _winRightDown = props.IsRightButtonPressed;
+
+            _winStart     = new Microsoft.Maui.Graphics.Point(pt.Position.X, pt.Position.Y);
+            _winZoomStart = _currentScale;
+            _wlStartCenter = WindowCenter;
+            _wlStartWidth  = WindowWidth;
+
+            _winRoot.CapturePointer(e.Pointer);
+            e.Handled = true;
+        }
+
+        void OnWinPointerMoved(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+        {
+            if (_winRoot is null) return;
+            if (!_winLeftDown && !_winRightDown) return;
+
+            var pt  = e.GetCurrentPoint(_winRoot);
+            var pos = new Microsoft.Maui.Graphics.Point(pt.Position.X, pt.Position.Y);
+
+            var dx = pos.X - _winStart.X;
+            var dy = pos.Y - _winStart.Y;
+
+            if (_winLeftDown && (_render3 != null || _render2 != null))
+            {
+                // WL (debounced)
+                var newWidth  = Math.Max(1, _wlStartWidth  + (dx * WLWidthSensitivity));
+                var newCenter =           _wlStartCenter - (dy * WLCenterSensitivity);
+                ApplyWindow(newCenter, newWidth);
+            }
+            else if (_winRightDown)
+            {
+                // Zoom TO CURSOR
+                var factor   = Math.Pow(1.01, -dy);
+                var newScale = Math.Clamp(_winZoomStart * factor, MIN_SCALE, MAX_SCALE);
+                ZoomAt(pos, newScale);
+            }
+
+            e.Handled = true;
+        }
+
+        void OnWinPointerReleased(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+        {
+            _winLeftDown  = false;
+            _winRightDown = false;
+            try { _winRoot?.ReleasePointerCapture(e.Pointer); } catch { }
+            e.Handled = true;
+        }
+
+        // Zoomt so, dass der Punkt unter 'screenPt' (Root-Koordinaten) stabil bleibt
+        void ZoomAt(Microsoft.Maui.Graphics.Point screenPt, double newScale)
+        {
+            newScale = Math.Clamp(newScale, MIN_SCALE, MAX_SCALE);
+
+            double cx = Root.Width  * 0.5;
+            double cy = Root.Height * 0.5;
+
+            double s  = _currentScale;
+            double k  = (s <= 0) ? 1.0 : newScale / s;
+
+            double newTx = (1 - k) * (screenPt.X - cx) + k * Img.TranslationX;
+            double newTy = (1 - k) * (screenPt.Y - cy) + k * Img.TranslationY;
+
+            Img.Scale = newScale;
+            Img.TranslationX = newTx;
+            Img.TranslationY = newTy;
+
+            _currentScale = newScale;
+            ClampTranslation();
+        }
+    }
+}
+#endif

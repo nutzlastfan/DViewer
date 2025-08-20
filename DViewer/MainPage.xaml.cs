@@ -128,19 +128,41 @@ namespace DViewer
         private async void OnLeftPreviewTapped(object? sender, TappedEventArgs e)
         {
             var vm = VM;
-            if (vm?.Left?.Image == null) return;
+            if (vm?.Left == null) return;
 
             try
             {
-                await Navigation.PushModalAsync(
-                    new FullscreenImagePage(
-                        source: vm.Left.Image,
-                        title: "Left",
-                        patientNameWithSex: vm.LeftPatientNameWithSex,
-                        species: vm.LeftSpecies,
-                        patientId: vm.LeftPatientID,
-                        birthDateDisplay: vm.LeftBirthDateDisplay,
-                        otherPid: vm.LeftOtherPid));
+                if (vm.Left.RenderFrameWithWindow != null)
+                {
+                    var frame = vm.LeftHasMultiFrame ? vm.LeftFrameIndex : 0;
+                    var wc = vm.Left.DefaultWindowCenter ?? 50.0;
+                    var ww = vm.Left.DefaultWindowWidth ?? 350.0;
+
+                    await Navigation.PushModalAsync(
+                        new FullscreenImagePage(
+                            renderWithWindow: vm.Left.RenderFrameWithWindow,
+                            initialCenter: wc,
+                            initialWidth: ww,
+                            frameIndex: frame,
+                            title: "Left",
+                            patientNameWithSex: vm.LeftPatientNameWithSex,
+                            species: vm.LeftSpecies,
+                            patientId: vm.LeftPatientID,
+                            birthDateDisplay: vm.LeftBirthDateDisplay,
+                            otherPid: vm.LeftOtherPid));
+                }
+                else if (vm.Left.Image != null)
+                {
+                    await Navigation.PushModalAsync(
+                        new FullscreenImagePage(
+                            source: vm.Left.Image,
+                            title: "Left",
+                            patientNameWithSex: vm.LeftPatientNameWithSex,
+                            species: vm.LeftSpecies,
+                            patientId: vm.LeftPatientID,
+                            birthDateDisplay: vm.LeftBirthDateDisplay,
+                            otherPid: vm.LeftOtherPid));
+                }
             }
             catch { /* still */ }
         }
@@ -149,19 +171,41 @@ namespace DViewer
         private async void OnRightPreviewTapped(object? sender, TappedEventArgs e)
         {
             var vm = VM;
-            if (vm?.Right?.Image == null) return;
+            if (vm?.Right == null) return;
 
             try
             {
-                await Navigation.PushModalAsync(
-                    new FullscreenImagePage(
-                        source: vm.Right.Image,
-                        title: "Right",
-                        patientNameWithSex: vm.RightPatientNameWithSex,
-                        species: vm.RightSpecies,
-                        patientId: vm.RightPatientID,
-                        birthDateDisplay: vm.RightBirthDateDisplay,
-                        otherPid: vm.RightOtherPid));
+                if (vm.Right.RenderFrameWithWindow != null)
+                {
+                    var frame = vm.RightHasMultiFrame ? vm.RightFrameIndex : 0;
+                    var wc = vm.Right.DefaultWindowCenter ?? 50.0;
+                    var ww = vm.Right.DefaultWindowWidth ?? 350.0;
+
+                    await Navigation.PushModalAsync(
+                        new FullscreenImagePage(
+                            renderWithWindow: vm.Right.RenderFrameWithWindow,
+                            initialCenter: wc,
+                            initialWidth: ww,
+                            frameIndex: frame,
+                            title: "Right",
+                            patientNameWithSex: vm.RightPatientNameWithSex,
+                            species: vm.RightSpecies,
+                            patientId: vm.RightPatientID,
+                            birthDateDisplay: vm.RightBirthDateDisplay,
+                            otherPid: vm.RightOtherPid));
+                }
+                else if (vm.Right.Image != null)
+                {
+                    await Navigation.PushModalAsync(
+                        new FullscreenImagePage(
+                            source: vm.Right.Image,
+                            title: "Right",
+                            patientNameWithSex: vm.RightPatientNameWithSex,
+                            species: vm.RightSpecies,
+                            patientId: vm.RightPatientID,
+                            birthDateDisplay: vm.RightBirthDateDisplay,
+                            otherPid: vm.RightOtherPid));
+                }
             }
             catch { /* still */ }
         }

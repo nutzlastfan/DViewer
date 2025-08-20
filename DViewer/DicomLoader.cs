@@ -71,6 +71,15 @@ namespace DViewer
                     var dicom = DicomFile.Open(path);
                     var ds = dicom.Dataset;
 
+
+                    // Window/Level Default aus dem Datensatz holen
+                    var (wc0, ww0) = GetWindow(ds);
+
+                    // WL-Renderer erzeugen und ins VM injizieren
+                    var wlRenderer = MakeWlRenderer(ds);
+                    TrySetWindowingOnVm(vm, wlRenderer, wc0 ?? 50.0, ww0 ?? 350.0);
+
+
                     // 1) Metadaten sammeln
                     foreach (var item in ds)
                     {
@@ -113,17 +122,28 @@ namespace DViewer
                     }
 
                     // 3) Kein „echtes“ Video – versuche cine (Multi-Frame) zu rendern
-                    var frames = BuildFrameSources(ds, out var fps);
-                    if (frames != null && frames.Count > 0)
+                    // 3) Kein „echtes“ Video – cine per Provider (keine Vorberechnung)
+                    var ts = ds.InternalTransferSyntax ?? DicomTransferSyntax.ImplicitVRLittleEndian;
+                    var px = FellowOakDicom.Imaging.DicomPixelData.Create(ds);
+                    if (px != null && px.NumberOfFrames > 1 && !IsVideoTransferSyntax(ts))
                     {
-                        vm.Image = frames[0];
-                        TrySetFramesOnVm(vm, frames, fps);
+                        var (count, provider) = MakeFrameProvider(ds);
+                        if (count > 0)
+                        {
+                            vm.Image = provider(0);                         // Frame 0 als Preview
+                            TrySetFrameProviderOnVm(vm, count, provider);   // <<< WICHTIG
+                        }
+                        else
+                        {
+                            vm.Image = BuildPreviewImageSource(ds);
+                            TrySetFrameProviderOnVm(vm, 0, _ => null);
+                        }
                     }
                     else
                     {
                         // 4) Fallback: Einzelbild
                         vm.Image = BuildPreviewImageSource(ds);
-                        TrySetFramesOnVm(vm, null, null);
+                        TrySetFrameProviderOnVm(vm, 0, _ => null);
                     }
                 }
                 catch
@@ -213,6 +233,82 @@ namespace DViewer
 
         }
 
+
+
+
+        // --- NEU: einfachen LRU-Frame-Provider bauen (on-demand Rendering + kleiner Cache)
+        private static (int count, Func<int, ImageSource?> provider) MakeFrameProvider(DicomDataset ds)
+        {
+            var px = FellowOakDicom.Imaging.DicomPixelData.Create(ds);
+            var count = px?.NumberOfFrames ?? 0;
+            if (count <= 0) return (0, _ => null);
+
+            // Ein DicomImage ist wiederverwendbar
+            var di = new FellowOakDicom.Imaging.DicomImage(ds);
+
+            // kleiner LRU-Cache
+            const int CACHE_CAP = 12;
+            var cache = new LinkedList<int>();
+            var map = new Dictionary<int, byte[]>(capacity: CACHE_CAP);
+
+            ImageSource FromBytes(byte[] bytes) =>
+                ImageSource.FromStream(() => new MemoryStream(bytes));
+
+            ImageSource? RenderFrame(int index)
+            {
+                if (index < 0 || index >= count) return null;
+
+                if (map.TryGetValue(index, out var cached))
+                {
+                    // refresh LRU
+                    var node = cache.Find(index);
+                    if (node != null)
+                    {
+                        cache.Remove(node);
+                        cache.AddFirst(node);
+                    }
+                    return FromBytes(cached);
+                }
+
+                using var rendered = di.RenderImage(index);
+                using var sharp = rendered.AsSharpImage();
+                using var ms = new MemoryStream();
+                sharp.Save(ms, new SixLabors.ImageSharp.Formats.Png.PngEncoder());
+                var bytes = ms.ToArray();
+
+                // in Cache legen
+                if (!map.ContainsKey(index))
+                {
+                    cache.AddFirst(index);
+                    map[index] = bytes;
+                    if (cache.Count > CACHE_CAP)
+                    {
+                        int drop = cache.Last!.Value;
+                        cache.RemoveLast();
+                        map.Remove(drop);
+                    }
+                }
+                return FromBytes(bytes);
+            }
+
+            return (count, RenderFrame);
+        }
+
+        // --- NEU: korrekte VM-Anbindung (statt SetFrames)
+        private static void TrySetFrameProviderOnVm(object vm, int frameCount, Func<int, ImageSource?> provider)
+        {
+            try
+            {
+                var mi = vm.GetType().GetMethod("SetFrameProvider",
+                            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                if (mi != null) { mi.Invoke(vm, new object?[] { frameCount, provider }); return; }
+
+                // Fallback: direkte Properties, wenn vorhanden
+                vm.GetType().GetProperty("FrameCount")?.SetValue(vm, frameCount);
+                vm.GetType().GetProperty("GetFrameImageSource")?.SetValue(vm, provider);
+            }
+            catch { /* still */ }
+        }
 
         private static bool IsVideoTransferSyntax(DicomTransferSyntax ts)
         {
@@ -471,6 +567,42 @@ namespace DViewer
                 onPc?.Invoke(vm, new object?[] { "HasVideo" });
             }
             catch { /* optional */ }
+        }
+
+
+
+private static Func<double, double, int, ImageSource> MakeWlRenderer(DicomDataset ds)
+{
+    var di = new FellowOakDicom.Imaging.DicomImage(ds); // wiederverwendbar
+    return (center, width, frame) =>
+    {
+        di.WindowCenter = center;
+        di.WindowWidth  = Math.Max(1, width);
+        using var rendered = di.RenderImage(Math.Max(0, frame));
+        using var sharp    = rendered.AsSharpImage();
+        using var ms       = new MemoryStream();
+        sharp.Save(ms, new SixLabors.ImageSharp.Formats.Png.PngEncoder());
+        var bytes = ms.ToArray();
+        return ImageSource.FromStream(() => new MemoryStream(bytes));
+    };
+}
+
+        private static void TrySetWindowingOnVm(object vm,
+            Func<double, double, int, ImageSource> renderer, double? wc, double? ww)
+        {
+            try
+            {
+                // bevorzugt eine Methode SetWindowing(...)
+                var mi = vm.GetType().GetMethod("SetWindowing",
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                if (mi != null) { mi.Invoke(vm, new object?[] { renderer, wc, ww }); return; }
+
+                // Fallback: direkte Properties, falls vorhanden
+                vm.GetType().GetProperty("RenderFrameWithWindow")?.SetValue(vm, renderer);
+                vm.GetType().GetProperty("DefaultWindowCenter")?.SetValue(vm, wc);
+                vm.GetType().GetProperty("DefaultWindowWidth")?.SetValue(vm, ww);
+            }
+            catch { /* still */ }
         }
     }
 }

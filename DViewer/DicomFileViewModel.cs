@@ -34,6 +34,19 @@ namespace DViewer
             set { if (ReferenceEquals(_image, value)) return; _image = value; OnPropertyChanged(); }
         }
 
+
+        public Func<double, double, int, ImageSource>? RenderFrameWithWindow { get; private set; }
+        public double? DefaultWindowCenter { get; private set; }
+        public double? DefaultWindowWidth { get; private set; }
+
+        internal void SetWindowing(Func<double, double, int, ImageSource> renderer, double? wc, double? ww)
+        {
+            RenderFrameWithWindow = renderer;
+            DefaultWindowCenter = wc;
+            DefaultWindowWidth = ww;
+        }
+
+
         // --------- Media (Video / Multiframe) ---------
 
         /// <summary>Pfad zu extrahiertem Videostream (z.B. .mp4). Null, wenn kein Video.</summary>
