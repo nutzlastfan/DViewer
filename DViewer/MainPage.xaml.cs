@@ -2,13 +2,27 @@
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Maui.Controls;
-using DViewer.Infrastructure;
 
 namespace DViewer
 {
     public partial class MainPage : ContentPage
     {
         private MainViewModel? VM => BindingContext as MainViewModel;
+
+        // -------- Vollbild-Flags (für Overlay) --------
+        private bool _leftFullscreenVisible;
+        public bool LeftFullscreenVisible
+        {
+            get => _leftFullscreenVisible;
+            set { if (_leftFullscreenVisible == value) return; _leftFullscreenVisible = value; OnPropertyChanged(nameof(LeftFullscreenVisible)); }
+        }
+
+        private bool _rightFullscreenVisible;
+        public bool RightFullscreenVisible
+        {
+            get => _rightFullscreenVisible;
+            set { if (_rightFullscreenVisible == value) return; _rightFullscreenVisible = value; OnPropertyChanged(nameof(RightFullscreenVisible)); }
+        }
 
         // ----------------- Konstruktoren -----------------
         // DI-Konstruktor (falls du AppHost/ServiceProvider verwendest)
@@ -17,6 +31,8 @@ namespace DViewer
             InitializeComponent();
             BindingContext = vm;
             App.MainVM = vm;
+
+            WireFullscreenEvents();
             _ = ProcessPendingOpensAsync();
         }
 
@@ -33,7 +49,19 @@ namespace DViewer
                 App.MainVM = vm;
             }
 
+            WireFullscreenEvents();
             _ = ProcessPendingOpensAsync();
+        }
+
+        private void WireFullscreenEvents()
+        {
+            // kleine Viewer -> Overlay toggeln
+            LeftViewer.FullscreenRequested += (_, __) => LeftFullscreenVisible = true;
+            RightViewer.FullscreenRequested += (_, __) => RightFullscreenVisible = true;
+
+            // Fullscreen-Viewer -> Overlay schließen (gleiche Taste)
+            LeftViewerFull.FullscreenRequested += (_, __) => LeftFullscreenVisible = false;
+            RightViewerFull.FullscreenRequested += (_, __) => RightFullscreenVisible = false;
         }
 
         protected override void OnAppearing()
@@ -50,7 +78,6 @@ namespace DViewer
             _processingOpens = true;
             try
             {
-                // nacheinander abarbeiten, für jede Datei Ziel-Seite wählen
                 while (App.PendingOpens.TryDequeue(out var path))
                     await AskSideAndOpenAsync(path);
             }
@@ -107,7 +134,7 @@ namespace DViewer
         {
             if (VM is null) return;
             var selected = e.CurrentSelection?.FirstOrDefault();
-            VM.SelectedTagFilter = selected as MainViewModel.TagFilterItem; // VM stößt intern RaiseFilterChanged() an
+            VM.SelectedTagFilter = selected as MainViewModel.TagFilterItem;
         }
 
         private void OnClearTagFilterClicked(object? sender, EventArgs e)
@@ -124,106 +151,19 @@ namespace DViewer
             VM.SelectedCombinedMetadataItem = selected as CombinedMetadataItem;
         }
 
-        // --- Preview-Tap links ---
-        private async void OnLeftPreviewTapped(object? sender, TappedEventArgs e)
-        {
-            var vm = VM;
-            if (vm?.Left == null) return;
-
-            try
-            {
-                if (vm.Left.RenderFrameWithWindow != null)
-                {
-                    var frame = vm.LeftHasMultiFrame ? vm.LeftFrameIndex : 0;
-                    var wc = vm.Left.DefaultWindowCenter ?? 50.0;
-                    var ww = vm.Left.DefaultWindowWidth ?? 350.0;
-
-                    await Navigation.PushModalAsync(
-                        new FullscreenImagePage(
-                            renderWithWindow: vm.Left.RenderFrameWithWindow,
-                            initialCenter: wc,
-                            initialWidth: ww,
-                            frameIndex: frame,
-                            title: "Left",
-                            patientNameWithSex: vm.LeftPatientNameWithSex,
-                            species: vm.LeftSpecies,
-                            patientId: vm.LeftPatientID,
-                            birthDateDisplay: vm.LeftBirthDateDisplay,
-                            otherPid: vm.LeftOtherPid));
-                }
-                else if (vm.Left.Image != null)
-                {
-                    await Navigation.PushModalAsync(
-                        new FullscreenImagePage(
-                            source: vm.Left.Image,
-                            title: "Left",
-                            patientNameWithSex: vm.LeftPatientNameWithSex,
-                            species: vm.LeftSpecies,
-                            patientId: vm.LeftPatientID,
-                            birthDateDisplay: vm.LeftBirthDateDisplay,
-                            otherPid: vm.LeftOtherPid));
-                }
-            }
-            catch { /* still */ }
-        }
-
-        // --- Preview-Tap rechts ---
-        private async void OnRightPreviewTapped(object? sender, TappedEventArgs e)
-        {
-            var vm = VM;
-            if (vm?.Right == null) return;
-
-            try
-            {
-                if (vm.Right.RenderFrameWithWindow != null)
-                {
-                    var frame = vm.RightHasMultiFrame ? vm.RightFrameIndex : 0;
-                    var wc = vm.Right.DefaultWindowCenter ?? 50.0;
-                    var ww = vm.Right.DefaultWindowWidth ?? 350.0;
-
-                    await Navigation.PushModalAsync(
-                        new FullscreenImagePage(
-                            renderWithWindow: vm.Right.RenderFrameWithWindow,
-                            initialCenter: wc,
-                            initialWidth: ww,
-                            frameIndex: frame,
-                            title: "Right",
-                            patientNameWithSex: vm.RightPatientNameWithSex,
-                            species: vm.RightSpecies,
-                            patientId: vm.RightPatientID,
-                            birthDateDisplay: vm.RightBirthDateDisplay,
-                            otherPid: vm.RightOtherPid));
-                }
-                else if (vm.Right.Image != null)
-                {
-                    await Navigation.PushModalAsync(
-                        new FullscreenImagePage(
-                            source: vm.Right.Image,
-                            title: "Right",
-                            patientNameWithSex: vm.RightPatientNameWithSex,
-                            species: vm.RightSpecies,
-                            patientId: vm.RightPatientID,
-                            birthDateDisplay: vm.RightBirthDateDisplay,
-                            otherPid: vm.RightOtherPid));
-                }
-            }
-            catch { /* still */ }
-        }
-
+        // Vollbild schließen Buttons
+        private void OnCloseLeftFullscreen(object? sender, EventArgs e) => LeftFullscreenVisible = false;
+        private void OnCloseRightFullscreen(object? sender, EventArgs e) => RightFullscreenVisible = false;
 
         // Add-Tag Overlay (Links)
         private async void OnAddTagLeftOverlayClicked(object? sender, EventArgs e)
         {
-            // TODO: Hier deinen bestehenden Add-Dialog aufrufen und Zielseite = Links übergeben.
-            // Beispiel (falls vorhanden): await Navigation.PushAsync(new AddDicomTagPage(toLeft: true));
             await DisplayAlert("Tag hinzufügen", "Neuen DICOM-Tag für LINKS hinzufügen (Verdrahtung folgt).", "OK");
         }
 
         // Add-Tag Overlay (Rechts)
         private async void OnAddTagRightOverlayClicked(object? sender, EventArgs e)
         {
-            // TODO: Hier deinen bestehenden Add-Dialog aufrufen und Zielseite = Rechts übergeben.
-            // Beispiel (falls vorhanden): await Navigation.PushAsync(new AddDicomTagPage(toLeft: false));
             await DisplayAlert("Tag hinzufügen", "Neuen DICOM-Tag für RECHTS hinzufügen (Verdrahtung folgt).", "OK");
         }
 
@@ -237,26 +177,7 @@ namespace DViewer
             // TODO: save right side
         }
 
-        // --- Preview-Tap rechts ---
-        //private async void OnRightPreviewTapped(object? sender, TappedEventArgs e)
-        //{
-        //    if (VM?.Right?.Image != null)
-        //    {
-        //        try
-        //        {
-        //            await Navigation.PushAsync(new ContentPage
-        //            {
-        //                Content = new Image { Source = VM.Right.Image, Aspect = Aspect.AspectFit },
-        //                Title = "Vorschau Rechts"
-        //            });
-        //        }
-        //        catch { /* still */ }
-        //    }
-        //}
-
-        // --- (Optional) Toolbar: "DICOM-Tag hinzufügen" ---
-        // Hier nur Platzhalter – wenn dein vorhandener Dialog ein Ergebnis (DicomTagCandidate)
-        // liefert, rufe danach VM.AddMissingTagToSide(candidate, toLeft) auf.
+        // (Optional) Toolbar: "DICOM-Tag hinzufügen"
         private async void OnAddDicomTagClicked(object? sender, EventArgs e)
         {
             if (VM is null) return;
@@ -264,12 +185,6 @@ namespace DViewer
             var side = await DisplayActionSheet("Tag wohin hinzufügen?", "Abbrechen", null, "Links", "Rechts");
             if (side is not ("Links" or "Rechts")) return;
             bool toLeft = side == "Links";
-
-            // >>> Hier deinen bestehenden Dialog aufrufen und das Ergebnis "candidate" abholen <<<
-            // Beispiel:
-            // var page = new AddDicomTagPage();
-            // var candidate = await page.GetResultAsync();
-            // if (candidate != null) VM.AddMissingTagToSide(candidate, toLeft);
 
             await DisplayAlert("Hinweis", "Verdrahtung mit dem vorhandenen Tag-Dialog kann ich sofort ergänzen, sobald du mir sagst, wie er das Ergebnis übergibt (Event/Task/Messaging).", "OK");
         }

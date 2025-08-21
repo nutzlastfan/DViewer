@@ -1,14 +1,15 @@
 ﻿<?xml version="1.0" encoding="utf-8" ?>
 <ContentPage
+    x:Class="DViewer.MainPage"
+    x:Name="This"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
     xmlns:local="clr-namespace:DViewer"
-    x:Class="DViewer.MainPage"
+    xmlns:controls="clr-namespace:DViewer.Controls"
     Title="DICOM Vergleich"
     Padding="10"
-    NavigationPage.HasNavigationBar="False"
-    x:Name="RootPage">
+    NavigationPage.HasNavigationBar="False">
 
     <ContentPage.Resources>
         <ResourceDictionary>
@@ -29,7 +30,6 @@
                 <Setter Property="PlaceholderColor" Value="{AppThemeBinding Light=#888888, Dark=#888888}"/>
             </Style>
 
-            <!-- kleiner runder FAB -->
             <Style x:Key="FabSmall" TargetType="Button">
                 <Setter Property="WidthRequest" Value="36"/>
                 <Setter Property="HeightRequest" Value="36"/>
@@ -45,181 +45,64 @@
     <!-- Reihen: 0 Bilder (mit Overlay), 1 Filter, 2 Haupttabelle -->
     <Grid RowDefinitions="Auto,Auto,*" ColumnDefinitions="*">
 
-        <!-- 0) Vorschaubilder mit Overlays -->
+        <!-- 0) Viewer (links/rechts) -->
+        <!-- 0) Viewer (links/rechts) -->
         <Grid Grid.Row="0" ColumnDefinitions="*,*" ColumnSpacing="8">
 
             <!-- LINKS -->
             <Frame Grid.Column="0" HasShadow="True" CornerRadius="6" Padding="0">
                 <Grid>
-             
-                    <!-- Bild nur wenn kein Video -->
-                    <Image HeightRequest="500" IsVisible="{Binding LeftHasVideo, Converter={StaticResource InverseBoolConverter}}"
-         Source="{Binding Left.Image}" Aspect="AspectFit">
-                                              <Image.GestureRecognizers>
-                            <TapGestureRecognizer Tapped="OnLeftPreviewTapped" />
-                        </Image.GestureRecognizers>
-                    </Image>
+                    <!-- Viewer zuerst -->
+                    <controls:DicomViewerView x:Name="LeftViewer" HeightRequest="500"
+                                                  Item="{Binding Left}"
+    VideoSource="{Binding LeftVideoSource}"
+    FrameIndex="{Binding LeftFrameIndex, Mode=TwoWay}"
+                                      HasVideo="{Binding LeftHasVideo}"
+                                      PrevFrameCommand="{Binding LeftPrevFrameCommand}"
+                                      NextFrameCommand="{Binding LeftNextFrameCommand}"
+                                      PlayPauseCommand="{Binding LeftPlayPauseCommand}"
+                                      IsPlaying="{Binding LeftIsPlaying}"
+                                      PatientNameWithSex="{Binding LeftPatientNameWithSex}"
+                                      Species="{Binding LeftSpecies}"
+                                      PatientID="{Binding LeftPatientID}"
+                                      BirthDateDisplay="{Binding LeftBirthDateDisplay}"
+                                      OtherPid="{Binding LeftOtherPid}" />
 
-                    <!-- Video nur wenn vorhanden -->
-                    <toolkit:MediaElement HeightRequest="500" IsVisible="{Binding LeftHasVideo}"
-                Source="{Binding LeftVideoSource}"
-                 ShouldAutoPlay="True" ShouldShowPlaybackControls="True" ShouldLoopPlayback="True" />
-
-                    <!-- Multiframe-Steuerleiste -->
-                    <Grid IsVisible="{Binding LeftHasMultiFrame}" Padding="8" VerticalOptions="End">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <Button Text="⏮" Command="{Binding LeftPrevFrameCommand}" />
-                        <Slider Grid.Column="1"
-            Minimum="0" Maximum="{Binding LeftFrameCount, Converter={StaticResource MinusOneConverter}}"
-            Value="{Binding LeftFrameIndex, Mode=TwoWay}"/>
-                        <Button Grid.Column="2" Text="⏭" Command="{Binding LeftNextFrameCommand}" />
-                        <Button Grid.Column="3" Text="{Binding LeftIsPlaying, Converter={StaticResource PlayPauseTextConverter}}"
-            Command="{Binding LeftPlayPauseCommand}"/>
-                    </Grid>
-
-
-                    <!-- runder L-Button oben links -->
+                    <!-- L-Button oben darüber legen -->
                     <Button Text="L"
-                            CornerRadius="18" WidthRequest="36" HeightRequest="36"
-                            FontAttributes="Bold"
-                            HorizontalOptions="Start" VerticalOptions="Start" Margin="8"
-                            Clicked="OnOpenLeftClicked"/>
-
-                    <!-- Text-Overlay -->
-                    <Grid HorizontalOptions="Start" VerticalOptions="Start"
-                          Margin="56,8,8,8" Padding="8"
-                          BackgroundColor="#66000000" MaximumWidthRequest="600" InputTransparent="True">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
-
-                        <!-- Patient (mit Sex) -->
-                        <Label Grid.Row="0"
-                               Text="{Binding LeftPatientNameWithSex}"
-                               FontAttributes="Bold" TextColor="White"
-                               LineBreakMode="TailTruncation" MaxLines="1"/>
-
-                        <!-- Species / Breed -->
-                        <Grid Grid.Row="1" ColumnDefinitions="Auto,*" ColumnSpacing="6">
-                            <Label Grid.Column="0" Text="Species" FontAttributes="Italic" TextColor="#DDFFFFFF"/>
-                            <Label Grid.Column="1" Text="{Binding LeftSpecies}" TextColor="White"
-                                   LineBreakMode="TailTruncation" MaxLines="1"/>
-                        </Grid>
-
-                        <!-- PID -->
-                        <Grid Grid.Row="2" ColumnDefinitions="Auto,*" ColumnSpacing="6">
-                            <Label Grid.Column="0" Text="PID" FontAttributes="Italic" TextColor="#DDFFFFFF"/>
-                            <Label Grid.Column="1" Text="{Binding LeftPatientID}" TextColor="White"
-                                   LineBreakMode="TailTruncation" MaxLines="1"/>
-                        </Grid>
-
-                        <!-- DOB -->
-                        <Grid Grid.Row="3" ColumnDefinitions="Auto,*" ColumnSpacing="6">
-                            <Label Grid.Column="0" Text="DOB" FontAttributes="Italic" TextColor="#DDFFFFFF"/>
-                            <Label Grid.Column="1" Text="{Binding LeftBirthDateDisplay}" TextColor="White"/>
-                        </Grid>
-
-                        <!-- Other PID -->
-                        <Grid Grid.Row="4" ColumnDefinitions="Auto,*" ColumnSpacing="6">
-                            <Label Grid.Column="0" Text="Other PID" FontAttributes="Italic" TextColor="#DDFFFFFF"/>
-                            <Label Grid.Column="1" Text="{Binding LeftOtherPid}" TextColor="White"
-                                   LineBreakMode="TailTruncation" MaxLines="1"/>
-                        </Grid>
-                    </Grid>
+                    CornerRadius="18" WidthRequest="36" HeightRequest="36"
+                    FontAttributes="Bold" ZIndex="20"
+                    HorizontalOptions="Start" VerticalOptions="Start" Margin="8"
+                    Clicked="OnOpenLeftClicked"/>
                 </Grid>
             </Frame>
 
             <!-- RECHTS -->
             <Frame Grid.Column="1" HasShadow="True" CornerRadius="6" Padding="0">
                 <Grid>
-                    <!-- Bild nur wenn kein Video -->
-                    <Image HeightRequest="500" IsVisible="{Binding RightHasVideo, Converter={StaticResource InverseBoolConverter}}"
-         Source="{Binding Right.Image}" Aspect="AspectFit">
-                        <Image.GestureRecognizers>
-                            <TapGestureRecognizer Tapped="OnRightPreviewTapped" />
-                        </Image.GestureRecognizers>
-                    </Image>
-
-                    <!-- Video nur wenn vorhanden -->
-                    <toolkit:MediaElement HeightRequest="500" IsVisible="{Binding RightHasVideo}"
-                Source="{Binding RightVideoSource}"
-                 ShouldAutoPlay="True" ShouldShowPlaybackControls="True" ShouldLoopPlayback="True" />
-
-                    <!-- Multiframe-Steuerleiste -->
-                    <Grid IsVisible="{Binding RightHasMultiFrame}" Padding="8" VerticalOptions="End">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <Button Text="⏮" Command="{Binding RightPrevFrameCommand}" />
-                        <Slider Grid.Column="1"
-            Minimum="0" Maximum="{Binding RightFrameCount, Converter={StaticResource MinusOneConverter}}"
-            Value="{Binding RightFrameIndex, Mode=TwoWay}"/>
-                        <Button Grid.Column="2" Text="⏭" Command="{Binding RightNextFrameCommand}" />
-                        <Button Grid.Column="3" Text="{Binding RightIsPlaying, Converter={StaticResource PlayPauseTextConverter}}"
-            Command="{Binding RightPlayPauseCommand}"/>
-                    </Grid>
+                    <controls:DicomViewerView x:Name="RightViewer" HeightRequest="500"
+                                      Item="{Binding Right}"
+                                      HasVideo="{Binding RightHasVideo}"
+                                      VideoSource="{Binding RightVideoSource}"
+                                      FrameIndex="{Binding RightFrameIndex, Mode=TwoWay}"
+                                      PrevFrameCommand="{Binding RightPrevFrameCommand}"
+                                      NextFrameCommand="{Binding RightNextFrameCommand}"
+                                      PlayPauseCommand="{Binding RightPlayPauseCommand}"
+                                      IsPlaying="{Binding RightIsPlaying}"
+                                      PatientNameWithSex="{Binding RightPatientNameWithSex}"
+                                      Species="{Binding RightSpecies}"
+                                      PatientID="{Binding RightPatientID}"
+                                      BirthDateDisplay="{Binding RightBirthDateDisplay}"
+                                      OtherPid="{Binding RightOtherPid}" />
 
                     <Button Text="R"
-                            CornerRadius="18" WidthRequest="36" HeightRequest="36"
-                            FontAttributes="Bold"
-                            HorizontalOptions="Start" VerticalOptions="Start" Margin="8"
-                            Clicked="OnOpenRightClicked"/>
-
-                    <Grid HorizontalOptions="Start" VerticalOptions="Start"
-                          Margin="56,8,8,8" Padding="8"
-                          BackgroundColor="#66000000" MaximumWidthRequest="600">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
-
-                        <Label Grid.Row="0"
-                               Text="{Binding RightPatientNameWithSex}"
-                               FontAttributes="Bold" TextColor="White"
-                               LineBreakMode="TailTruncation" MaxLines="1"/>
-
-                        <Grid Grid.Row="1" ColumnDefinitions="Auto,*" ColumnSpacing="6">
-                            <Label Grid.Column="0" Text="Species" FontAttributes="Italic" TextColor="#DDFFFFFF"/>
-                            <Label Grid.Column="1" Text="{Binding RightSpecies}" TextColor="White"
-                                   LineBreakMode="TailTruncation" MaxLines="1"/>
-                        </Grid>
-
-                        <Grid Grid.Row="2" ColumnDefinitions="Auto,*" ColumnSpacing="6">
-                            <Label Grid.Column="0" Text="PID" FontAttributes="Italic" TextColor="#DDFFFFFF"/>
-                            <Label Grid.Column="1" Text="{Binding RightPatientID}" TextColor="White"
-                                   LineBreakMode="TailTruncation" MaxLines="1"/>
-                        </Grid>
-
-                        <Grid Grid.Row="3" ColumnDefinitions="Auto,*" ColumnSpacing="6">
-                            <Label Grid.Column="0" Text="DOB" FontAttributes="Italic" TextColor="#DDFFFFFF"/>
-                            <Label Grid.Column="1" Text="{Binding RightBirthDateDisplay}" TextColor="White"/>
-                        </Grid>
-
-                        <Grid Grid.Row="4" ColumnDefinitions="Auto,*" ColumnSpacing="6">
-                            <Label Grid.Column="0" Text="Other PID" FontAttributes="Italic" TextColor="#DDFFFFFF"/>
-                            <Label Grid.Column="1" Text="{Binding RightOtherPid}" TextColor="White"
-                                   LineBreakMode="TailTruncation" MaxLines="1"/>
-                        </Grid>
-                    </Grid>
+                    CornerRadius="18" WidthRequest="36" HeightRequest="36"
+                    FontAttributes="Bold" ZIndex="20"
+                    HorizontalOptions="Start" VerticalOptions="Start" Margin="8"
+                    Clicked="OnOpenRightClicked"/>
                 </Grid>
             </Frame>
         </Grid>
-
         <!-- 1) Optionen / Filter -->
         <Frame Grid.Row="1" HasShadow="True" CornerRadius="6" Padding="8">
             <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="10" RowDefinitions="Auto,Auto" RowSpacing="6">
@@ -263,9 +146,7 @@
             </Frame>
 
             <!-- Vergleich (rechts) -->
-            <!-- Vergleich (rechts) -->
             <Frame Grid.Column="1" HasShadow="True" CornerRadius="6" Padding="0">
-                <!-- One grid controls header + list with 4 shared columns -->
                 <Grid RowDefinitions="Auto,*" ColumnSpacing="8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="{Binding TagWidth,  Converter={StaticResource StarConverter}}"/>
@@ -274,81 +155,133 @@
                         <ColumnDefinition Width="{Binding RightWidth,Converter={StaticResource StarConverter}}"/>
                     </Grid.ColumnDefinitions>
 
-                    <!-- HEADER (no nested grid) -->
                     <Button Grid.Row="0" Grid.Column="0" Text="{Binding TagHeaderText}"
-                Clicked="OnSortClicked" CommandParameter="TagId" TextColor="White" />
+                            Clicked="OnSortClicked" CommandParameter="TagId" TextColor="White" />
                     <Button Grid.Row="0" Grid.Column="1" Text="{Binding NameHeaderText}"
-                Clicked="OnSortClicked" CommandParameter="Name" TextColor="White" />
+                            Clicked="OnSortClicked" CommandParameter="Name" TextColor="White" />
                     <Button Grid.Row="0" Grid.Column="2" Text="{Binding LeftHeaderText}"
-                Clicked="OnSortClicked" CommandParameter="LeftValue" TextColor="White" />
+                            Clicked="OnSortClicked" CommandParameter="LeftValue" TextColor="White" />
                     <Button Grid.Row="0" Grid.Column="3" Text="{Binding RightHeaderText}"
-                Clicked="OnSortClicked" CommandParameter="RightValue" TextColor="White" />
+                            Clicked="OnSortClicked" CommandParameter="RightValue" TextColor="White" />
 
-                    <!-- LIST -->
                     <CollectionView Grid.Row="1" Grid.ColumnSpan="4"
-                        ItemsSource="{Binding FilteredItems}"
-                        SelectionMode="Single"
-                        SelectionChanged="OnCombinedSelectionChanged">
+                                    ItemsSource="{Binding FilteredItems}"
+                                    SelectionMode="Single"
+                                    SelectionChanged="OnCombinedSelectionChanged">
                         <CollectionView.ItemTemplate>
                             <DataTemplate>
-                                <Grid Padding="4"
-                          BackgroundColor="{Binding IsAlternate, Converter={StaticResource AltBgConverter}}">
+                                <Grid Padding="4" BackgroundColor="{Binding IsAlternate, Converter={StaticResource AltBgConverter}}">
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="{Binding BindingContext.TagWidth,  Source={x:Reference RootPage}, Converter={StaticResource StarConverter}}"/>
-                                        <ColumnDefinition Width="{Binding BindingContext.NameWidth, Source={x:Reference RootPage}, Converter={StaticResource StarConverter}}"/>
-                                        <ColumnDefinition Width="{Binding BindingContext.LeftWidth, Source={x:Reference RootPage}, Converter={StaticResource StarConverter}}"/>
-                                        <ColumnDefinition Width="{Binding BindingContext.RightWidth,Source={x:Reference RootPage}, Converter={StaticResource StarConverter}}"/>
+                                        <ColumnDefinition Width="{Binding BindingContext.TagWidth,  Source={x:Reference This}, Converter={StaticResource StarConverter}}"/>
+                                        <ColumnDefinition Width="{Binding BindingContext.NameWidth, Source={x:Reference This}, Converter={StaticResource StarConverter}}"/>
+                                        <ColumnDefinition Width="{Binding BindingContext.LeftWidth, Source={x:Reference This}, Converter={StaticResource StarConverter}}"/>
+                                        <ColumnDefinition Width="{Binding BindingContext.RightWidth,Source={x:Reference This}, Converter={StaticResource StarConverter}}"/>
                                     </Grid.ColumnDefinitions>
 
-                                    <Label Grid.Column="0" Text="{Binding TagId}" VerticalTextAlignment="Center"
-                               FontAttributes="Bold" Margin="4,0"/>
-                                    <Label Grid.Column="1" Text="{Binding Name}" VerticalTextAlignment="Center"
-                               LineBreakMode="TailTruncation" Margin="4,0"/>
+                                    <Label Grid.Column="0" Text="{Binding TagId}" VerticalTextAlignment="Center" FontAttributes="Bold" Margin="4,0"/>
+                                    <Label Grid.Column="1" Text="{Binding Name}" VerticalTextAlignment="Center" LineBreakMode="TailTruncation" Margin="4,0"/>
 
-                                    <!-- Links -->
                                     <Entry x:Name="LeftValueEntry" Grid.Column="2" Margin="2,0"
-                               Text="{Binding LeftText, Mode=TwoWay,
-                                      Converter={StaticResource OnlyWhenFocusedConverter},
-                                      ConverterParameter={Binding Source={x:Reference LeftValueEntry}, Path=IsFocused}}"/>
+                                           Text="{Binding LeftText, Mode=TwoWay,
+                                                  Converter={StaticResource OnlyWhenFocusedConverter},
+                                                  ConverterParameter={Binding Source={x:Reference LeftValueEntry}, Path=IsFocused}}"/>
 
-                                    <!-- Rechts -->
                                     <Entry x:Name="RightValueEntry" Grid.Column="3" Margin="2,0"
-                               Text="{Binding RightText, Mode=TwoWay,
-                                      Converter={StaticResource OnlyWhenFocusedConverter},
-                                      ConverterParameter={Binding Source={x:Reference RightValueEntry}, Path=IsFocused}}"/>
+                                           Text="{Binding RightText, Mode=TwoWay,
+                                                  Converter={StaticResource OnlyWhenFocusedConverter},
+                                                  ConverterParameter={Binding Source={x:Reference RightValueEntry}, Path=IsFocused}}"/>
                                 </Grid>
                             </DataTemplate>
                         </CollectionView.ItemTemplate>
                     </CollectionView>
 
-                    <!-- OVERLAYS (RowSpan=2 so they sit above header + list) -->
-
-                    <!-- LEFT column overlays -->
+                    <!-- OVERLAYS -->
                     <Button Grid.Row="0" Grid.RowSpan="2" Grid.Column="2" ZIndex="10"
-                Style="{StaticResource FabSmall}" Text="+"
-                Margin="0,0,02,0" HorizontalOptions="End" VerticalOptions="Start"
-                AutomationProperties.Name="Tag zu LINKS hinzufügen"
-                Clicked="OnAddTagLeftOverlayClicked"/>
+                            Style="{StaticResource FabSmall}" Text="+" Margin="0,0,02,0"
+                            HorizontalOptions="End" VerticalOptions="Start"
+                            AutomationProperties.Name="Tag zu LINKS hinzufügen"
+                            Clicked="OnAddTagLeftOverlayClicked"/>
                     <Button Grid.Row="0" Grid.RowSpan="2" Grid.Column="2" ZIndex="10"
-                Style="{StaticResource FabSmall}" Text="💾"
-                Margin="0,0,50,0" HorizontalOptions="End" VerticalOptions="Start"
-                AutomationProperties.Name="LINKS speichern"
-                Clicked="OnSaveLeftClicked"/>
+                            Style="{StaticResource FabSmall}" Text="💾" Margin="0,0,50,0"
+                            HorizontalOptions="End" VerticalOptions="Start"
+                            AutomationProperties.Name="LINKS speichern"
+                            Clicked="OnSaveLeftClicked"/>
 
-                    <!-- RIGHT column overlays -->
                     <Button Grid.Row="0" Grid.RowSpan="2" Grid.Column="3" ZIndex="10"
-                Style="{StaticResource FabSmall}" Text="+"
-                Margin="0,0,02,0" HorizontalOptions="End" VerticalOptions="Start"
-                AutomationProperties.Name="Tag zu RECHTS hinzufügen"
-                Clicked="OnAddTagRightOverlayClicked"/>
+                            Style="{StaticResource FabSmall}" Text="+" Margin="0,0,02,0"
+                            HorizontalOptions="End" VerticalOptions="Start"
+                            AutomationProperties.Name="Tag zu RECHTS hinzufügen"
+                            Clicked="OnAddTagRightOverlayClicked"/>
                     <Button Grid.Row="0" Grid.RowSpan="2" Grid.Column="3" ZIndex="10"
-                Style="{StaticResource FabSmall}" Text="💾"
-                Margin="0,0,50,0" HorizontalOptions="End" VerticalOptions="Start"
-                AutomationProperties.Name="RECHTS speichern"
-                Clicked="OnSaveRightClicked"/>
+                            Style="{StaticResource FabSmall}" Text="💾" Margin="0,0,50,0"
+                            HorizontalOptions="End" VerticalOptions="Start"
+                            AutomationProperties.Name="RECHTS speichern"
+                            Clicked="OnSaveRightClicked"/>
                 </Grid>
             </Frame>
-
         </Grid>
+
+        <!-- Vollbild Overlay: Links -->
+        <Grid Grid.RowSpan="3"
+              IsVisible="{Binding Source={x:Reference This}, Path=LeftFullscreenVisible}"
+              BackgroundColor="#CC000000">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0" Padding="8" BackgroundColor="#1A1A1A">
+                <Button Text="✕ Schließen" HorizontalOptions="End" Clicked="OnCloseLeftFullscreen"/>
+            </Grid>
+
+            <controls:DicomViewerView x:Name="LeftViewerFull"
+                                      Grid.Row="1"
+                                      Item="{Binding Left}"
+                                      HasVideo="{Binding LeftHasVideo}"
+                                      HasMultiFrame="{Binding LeftHasMultiFrame}"
+                                      VideoSource="{Binding LeftVideoSource}"
+                                      FrameIndex="{Binding LeftFrameIndex, Mode=TwoWay}"
+                                      PrevFrameCommand="{Binding LeftPrevFrameCommand}"
+                                      NextFrameCommand="{Binding LeftNextFrameCommand}"
+                                      PlayPauseCommand="{Binding LeftPlayPauseCommand}"
+                                      IsPlaying="{Binding LeftIsPlaying}"
+                                      PatientNameWithSex="{Binding LeftPatientNameWithSex}"
+                                      Species="{Binding LeftSpecies}"
+                                      PatientID="{Binding LeftPatientID}"
+                                      BirthDateDisplay="{Binding LeftBirthDateDisplay}"
+                                      OtherPid="{Binding LeftOtherPid}" />
+        </Grid>
+
+        <!-- Vollbild Overlay: Rechts -->
+        <Grid Grid.RowSpan="3"
+              IsVisible="{Binding Source={x:Reference This}, Path=RightFullscreenVisible}"
+              BackgroundColor="#CC000000">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0" Padding="8" BackgroundColor="#1A1A1A">
+                <Button Text="✕ Schließen" HorizontalOptions="End" Clicked="OnCloseRightFullscreen"/>
+            </Grid>
+
+            <controls:DicomViewerView x:Name="RightViewerFull"
+                                      Grid.Row="1"
+                                      Item="{Binding Right}"
+                                      HasVideo="{Binding RightHasVideo}"
+                                      HasMultiFrame="{Binding RightHasMultiFrame}"
+                                      VideoSource="{Binding RightVideoSource}"
+                                      FrameIndex="{Binding RightFrameIndex, Mode=TwoWay}"
+                                      PrevFrameCommand="{Binding RightPrevFrameCommand}"
+                                      NextFrameCommand="{Binding RightNextFrameCommand}"
+                                      PlayPauseCommand="{Binding RightPlayPauseCommand}"
+                                      IsPlaying="{Binding RightIsPlaying}"
+                                      PatientNameWithSex="{Binding RightPatientNameWithSex}"
+                                      Species="{Binding RightSpecies}"
+                                      PatientID="{Binding RightPatientID}"
+                                      BirthDateDisplay="{Binding RightBirthDateDisplay}"
+                                      OtherPid="{Binding RightOtherPid}" />
+        </Grid>
+
     </Grid>
 </ContentPage>

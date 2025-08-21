@@ -13,7 +13,8 @@ namespace DViewer
         {
             var builder = MauiApp.CreateBuilder();
             builder
-                .UseMauiApp<App>()           
+                .UseMauiApp<App>()   
+                .UseMauiCommunityToolkit()
                 .UseMauiCommunityToolkitMediaElement()  
                 .ConfigureFonts(fonts =>
                 {

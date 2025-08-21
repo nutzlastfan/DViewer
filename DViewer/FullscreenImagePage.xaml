@@ -13,7 +13,7 @@
                HorizontalOptions="Center"
                VerticalOptions="Center" />
 
-        <!-- PATIENT OVERLAY (oben links, wie in der Vorschau) -->
+        <!-- PATIENT OVERLAY (oben links) -->
         <Grid HorizontalOptions="Start"
               VerticalOptions="Start"
               Margin="12"
@@ -58,7 +58,7 @@
             </Grid>
         </Grid>
 
-        <!-- WINDOW/LEVEL READOUT (rechts) -->
+        <!-- WINDOW/LEVEL READOUT (rechts mittig) -->
         <Grid HorizontalOptions="End"
               VerticalOptions="Center"
               Margin="12"
@@ -77,17 +77,27 @@
                 <Label Grid.Column="1" Text="{Binding WindowCenter, StringFormat='{}{0:0}'}" TextColor="White"/>
             </Grid>
             <Grid Grid.Row="2" ColumnDefinitions="Auto,*" ColumnSpacing="10">
-                <Label Grid.Column="0" Text="Width" TextColor="#DDFFFFFF" />
+                <Label Grid.Column="0" Text="Width"  TextColor="#DDFFFFFF" />
                 <Label Grid.Column="1" Text="{Binding WindowWidth, StringFormat='{}{0:0}'}" TextColor="White"/>
             </Grid>
         </Grid>
 
-        <!-- Gesten (Touch/Trackpad) -->
+        <!-- FRAME OVERLAY (unten rechts) -->
+        <Grid HorizontalOptions="End"
+              VerticalOptions="End"
+              Margin="12"
+              Padding="8"
+              BackgroundColor="#66000000"
+              InputTransparent="True">
+            <Label Text="{Binding FramePositionText}" TextColor="White" FontAttributes="Bold"/>
+        </Grid>
+
+        <!-- Gesten -->
         <Grid.GestureRecognizers>
             <TapGestureRecognizer NumberOfTapsRequired="1" Tapped="OnCloseTapped" />
             <TapGestureRecognizer NumberOfTapsRequired="2" Tapped="OnDoubleTapped" />
             <PinchGestureRecognizer PinchUpdated="OnPinchUpdated" />
-            <PanGestureRecognizer PanUpdated="OnPanUpdated"   TouchPoints="1" />
+            <PanGestureRecognizer PanUpdated="OnPanUpdated" TouchPoints="1" />
             <PanGestureRecognizer PanUpdated="OnWlPanUpdated" TouchPoints="2" />
         </Grid.GestureRecognizers>
 

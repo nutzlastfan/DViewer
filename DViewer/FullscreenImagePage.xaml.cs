@@ -17,7 +17,7 @@ namespace DViewer
         bool _pinching;
 
         // -------- Window/Level ----------
-        const double WLWidthSensitivity = 2.0;  // ΔX -> ΔWidth
+        const double WLWidthSensitivity = 2.0; // ΔX -> ΔWidth
         const double WLCenterSensitivity = 2.0; // ΔY -> ΔCenter
 
         double _windowCenter;
@@ -28,7 +28,6 @@ namespace DViewer
             get => _windowCenter;
             private set { if (Math.Abs(_windowCenter - value) < double.Epsilon) return; _windowCenter = value; OnPropertyChanged(); }
         }
-
         public double WindowWidth
         {
             get => _windowWidth;
@@ -36,14 +35,13 @@ namespace DViewer
         }
 
         double _wlStartCenter, _wlStartWidth;
-
-        // Debounce fürs WL-Rendering
         System.Threading.CancellationTokenSource? _wlCts;
 
         // -------- Renderer ----------
         readonly Func<double, double, int, ImageSource>? _render3;
         readonly Func<double, double, ImageSource>? _render2;
-        readonly int _frameIndex = 0;
+        int _frameIndex = 0;
+        readonly Func<int>? _frameIndexProvider;   // optional: VM-Frame liefert Play-Updates
 
         // -------- Patient-Overlay ----------
         public string? PatientNameWithSex { get; }
@@ -52,9 +50,25 @@ namespace DViewer
         public string? BirthDateDisplay { get; }
         public string? OtherPid { get; }
 
+        // -------- Frame-Overlay ----------
+        int _frameCount;
+        public int FrameCount
+        {
+            get => _frameCount;
+            private set { if (_frameCount == value) return; _frameCount = value; OnPropertyChanged(); OnPropertyChanged(nameof(FramePositionText)); }
+        }
+        public int FrameIndex
+        {
+            get => _frameIndex;
+            private set { if (_frameIndex == value) return; _frameIndex = value; OnPropertyChanged(nameof(FrameIndex)); OnPropertyChanged(nameof(FramePositionText)); }
+        }
+        public string FramePositionText => FrameCount > 0 ? $"Frame {Math.Min(FrameIndex + 1, FrameCount)} / {FrameCount}" : string.Empty;
+
+        IDispatcherTimer? _pollTimer; // folgt optional externem FrameIndex
+
         // ================== CONSTRUCTORS ==================
 
-        // A) center,width,frame
+        // A) center,width,frame (+ optionaler frameIndexProvider + frameCount)
         public FullscreenImagePage(
             Func<double, double, int, ImageSource> renderWithWindow,
             double initialCenter,
@@ -65,7 +79,9 @@ namespace DViewer
             string? species = null,
             string? patientId = null,
             string? birthDateDisplay = null,
-            string? otherPid = null)
+            string? otherPid = null,
+            Func<int>? frameIndexProvider = null,
+            int frameCount = 0)
         {
             InitializeComponent();
             NavigationPage.SetHasNavigationBar(this, false);
@@ -79,11 +95,36 @@ namespace DViewer
 
             _render3 = renderWithWindow;
             _frameIndex = Math.Max(0, frameIndex);
+            _frameIndexProvider = frameIndexProvider;
+            FrameCount = Math.Max(0, frameCount);
+
             WindowCenter = initialCenter;
             WindowWidth = Math.Max(1, initialWidth);
 
             Img.Source = _render3(WindowCenter, WindowWidth, _frameIndex);
             BindingContext = this;
+
+            // Wenn ein externer Frame-Provider kommt, poll’e ihn leichtgewichtig
+            if (_frameIndexProvider != null)
+            {
+                _pollTimer = Dispatcher.CreateTimer();
+                _pollTimer.Interval = TimeSpan.FromMilliseconds(33); // ~30 fps
+                _pollTimer.Tick += (_, __) =>
+                {
+                    try
+                    {
+                        var idx = _frameIndexProvider();
+                        if (idx != FrameIndex)
+                        {
+                            FrameIndex = idx;
+                            if (_render3 != null)
+                                Img.Source = _render3(WindowCenter, WindowWidth, FrameIndex);
+                        }
+                    }
+                    catch { /* still */ }
+                };
+                _pollTimer.Start();
+            }
         }
 
         // B) center,width
@@ -109,10 +150,11 @@ namespace DViewer
             OtherPid = otherPid;
 
             _render2 = renderWithWindow;
+
             WindowCenter = initialCenter;
             WindowWidth = Math.Max(1, initialWidth);
-
             Img.Source = _render2(WindowCenter, WindowWidth);
+
             BindingContext = this;
         }
 
@@ -162,11 +204,9 @@ namespace DViewer
                     Img.AnchorX = e.ScaleOrigin.X;
                     Img.AnchorY = e.ScaleOrigin.Y;
                     break;
-
                 case GestureStatus.Running:
                     Img.Scale = Math.Clamp(_currentScale * e.Scale, MIN_SCALE, MAX_SCALE);
                     break;
-
                 case GestureStatus.Canceled:
                 case GestureStatus.Completed:
                     _pinching = false;
@@ -237,10 +277,10 @@ namespace DViewer
                     await System.Threading.Tasks.Task.Delay(delayMs, cts.Token);
                     if (cts.IsCancellationRequested) return;
 
-                    if (_render3 != null) Img.Source = _render3(WindowCenter, WindowWidth, _frameIndex);
+                    if (_render3 != null) Img.Source = _render3(WindowCenter, WindowWidth, FrameIndex);
                     else Img.Source = _render2!(WindowCenter, WindowWidth);
                 }
-                catch { /* noop */ }
+                catch { /* still */ }
                 finally
                 {
                     if (ReferenceEquals(_wlCts, cts)) _wlCts = null;
@@ -248,7 +288,6 @@ namespace DViewer
             });
         }
 
-        // Begrenzung der Verschiebung
         void ClampTranslation()
         {
             if (_currentScale <= 1)
@@ -271,6 +310,15 @@ namespace DViewer
             Img.TranslationY = Math.Clamp(Img.TranslationY, -maxY, maxY);
         }
 
+        protected override void OnDisappearing()
+        {
+            base.OnDisappearing();
+            try { _pollTimer?.Stop(); } catch { }
+            _pollTimer = null;
+            _wlCts?.Cancel();
+            _wlCts = null;
+        }
+
         // INotifyPropertyChanged
         public new event PropertyChangedEventHandler? PropertyChanged;
         private new void OnPropertyChanged([CallerMemberName] string? name = null)
@@ -278,7 +326,7 @@ namespace DViewer
     }
 }
 
-// ================== WINDOWS: Maus (Links=WL, Rechts=Zoom to cursor) ==================
+// ================== WINDOWS: Maus (Links=WL, Rechts=Zoom-to-cursor) ==================
 #if WINDOWS
 namespace DViewer
 {
@@ -322,8 +370,8 @@ namespace DViewer
             _winLeftDown  = props.IsLeftButtonPressed;
             _winRightDown = props.IsRightButtonPressed;
 
-            _winStart     = new Microsoft.Maui.Graphics.Point(pt.Position.X, pt.Position.Y);
-            _winZoomStart = _currentScale;
+            _winStart      = new Microsoft.Maui.Graphics.Point(pt.Position.X, pt.Position.Y);
+            _winZoomStart  = _currentScale;
             _wlStartCenter = WindowCenter;
             _wlStartWidth  = WindowWidth;
 
@@ -344,14 +392,13 @@ namespace DViewer
 
             if (_winLeftDown && (_render3 != null || _render2 != null))
             {
-                // WL (debounced)
                 var newWidth  = Math.Max(1, _wlStartWidth  + (dx * WLWidthSensitivity));
                 var newCenter =           _wlStartCenter - (dy * WLCenterSensitivity);
                 ApplyWindow(newCenter, newWidth);
             }
             else if (_winRightDown)
             {
-                // Zoom TO CURSOR
+                // Zoom-to-cursor
                 var factor   = Math.Pow(1.01, -dy);
                 var newScale = Math.Clamp(_winZoomStart * factor, MIN_SCALE, MAX_SCALE);
                 ZoomAt(pos, newScale);
@@ -368,7 +415,7 @@ namespace DViewer
             e.Handled = true;
         }
 
-        // Zoomt so, dass der Punkt unter 'screenPt' (Root-Koordinaten) stabil bleibt
+        // Zoom so, dass screenPt (Root-Koords) stabil bleibt
         void ZoomAt(Microsoft.Maui.Graphics.Point screenPt, double newScale)
         {
             newScale = Math.Clamp(newScale, MIN_SCALE, MAX_SCALE);
@@ -376,8 +423,8 @@ namespace DViewer
             double cx = Root.Width  * 0.5;
             double cy = Root.Height * 0.5;
 
-            double s  = _currentScale;
-            double k  = (s <= 0) ? 1.0 : newScale / s;
+            double s = _currentScale;
+            double k = (s <= 0) ? 1.0 : newScale / s;
 
             double newTx = (1 - k) * (screenPt.X - cx) + k * Img.TranslationX;
             double newTy = (1 - k) * (screenPt.Y - cy) + k * Img.TranslationY;

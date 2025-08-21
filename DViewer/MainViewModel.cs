@@ -63,7 +63,6 @@ namespace DViewer
         public ParameterCommand LeftPlayPauseCommand { get; }
         public ParameterCommand RightPlayPauseCommand { get; }
 
-
         // Video-Flags/Quellen
         public bool LeftHasVideo => !string.IsNullOrEmpty(Left?.VideoPath);
         public bool RightHasVideo => !string.IsNullOrEmpty(Right?.VideoPath);
@@ -99,6 +98,14 @@ namespace DViewer
         public bool RightCanPrev => RightHasMultiFrame && RightFrameIndex > 0;
         public bool RightCanNext => RightHasMultiFrame && RightFrameIndex < RightFrameCount - 1;
 
+        // ---- Timer-Interval aus FPS umrechnen (1..60 fps) ----
+        private static TimeSpan FpsToInterval(double? fps)
+        {
+            var f = fps.GetValueOrDefault(10.0);
+            if (double.IsNaN(f) || f <= 0) f = 10.0;
+            f = Math.Clamp(f, 1.0, 60.0);
+            return TimeSpan.FromMilliseconds(1000.0 / f);
+        }
 
         private void SetLeftFrame(int idx)
         {
@@ -133,18 +140,17 @@ namespace DViewer
         private void StepLeftFrame(int delta) => SetLeftFrame(LeftFrameIndex + delta);
         private void StepRightFrame(int delta) => SetRightFrame(RightFrameIndex + delta);
 
+        // ---- Frames setzen + Prefetch
         private void UpdateLeftDisplayedFrame()
         {
-            if (Left == null || LeftHasVideo) return;         // Video zeigt MediaElement
+            if (Left == null || LeftHasVideo) return;
             if (LeftFrameCount <= 0) return;
+
             try
             {
                 var src = Left.GetFrameImageSource?.Invoke(_leftFrameIndex);
-                if (src != null)
-                {
-                    Left.Image = src;
-                    OnPropertyChanged(nameof(Left));
-                }
+                if (src != null) Left.Image = src;          // Image setter feuert PropertyChanged
+                Left.PrefetchFrames?.Invoke(_leftFrameIndex);
             }
             catch { /* still */ }
         }
@@ -153,18 +159,15 @@ namespace DViewer
         {
             if (Right == null || RightHasVideo) return;
             if (RightFrameCount <= 0) return;
+
             try
             {
                 var src = Right.GetFrameImageSource?.Invoke(_rightFrameIndex);
-                if (src != null)
-                {
-                    Right.Image = src;
-                    OnPropertyChanged(nameof(Right));
-                }
+                if (src != null) Right.Image = src;         // Image setter feuert PropertyChanged
+                Right.PrefetchFrames?.Invoke(_rightFrameIndex);
             }
             catch { /* still */ }
         }
-
 
         private void ToggleLeftPlayback()
         {
@@ -173,8 +176,7 @@ namespace DViewer
             if (_leftTimer == null)
             {
                 _leftTimer = Application.Current?.Dispatcher.CreateTimer();
-                _leftTimer!.Interval = TimeSpan.FromMilliseconds(100); // ~10 fps
-                _leftTimer.Tick += (_, __) =>
+                _leftTimer!.Tick += (_, __) =>
                 {
                     if (LeftFrameCount <= 0) return;
                     var n = LeftFrameIndex + 1;
@@ -182,6 +184,9 @@ namespace DViewer
                     SetLeftFrame(n);
                 };
             }
+
+            // Intervall bei jedem Start/Resume aus FPS setzen (falls sich FPS geändert hat)
+            _leftTimer.Interval = FpsToInterval(Left?.FramesPerSecond);
 
             if (_leftTimer.IsRunning) _leftTimer.Stop();
             else _leftTimer.Start();
@@ -196,8 +201,7 @@ namespace DViewer
             if (_rightTimer == null)
             {
                 _rightTimer = Application.Current?.Dispatcher.CreateTimer();
-                _rightTimer!.Interval = TimeSpan.FromMilliseconds(100);
-                _rightTimer.Tick += (_, __) =>
+                _rightTimer!.Tick += (_, __) =>
                 {
                     if (RightFrameCount <= 0) return;
                     var n = RightFrameIndex + 1;
@@ -206,13 +210,13 @@ namespace DViewer
                 };
             }
 
+            _rightTimer.Interval = FpsToInterval(Right?.FramesPerSecond);
+
             if (_rightTimer.IsRunning) _rightTimer.Stop();
             else _rightTimer.Start();
 
             OnPropertyChanged(nameof(RightIsPlaying));
         }
-
-
 
         private void ResetMediaStateForSide(DicomFileViewModel? vm, bool left)
         {
@@ -221,12 +225,14 @@ namespace DViewer
                 _leftTimer?.Stop();
                 _leftFrameIndex = 0;
                 UpdateLeftDisplayedFrame(); // zeigt Frame 0 (bei Multiframe)
+                OnPropertyChanged(nameof(LeftIsPlaying));
             }
             else
             {
                 _rightTimer?.Stop();
                 _rightFrameIndex = 0;
                 UpdateRightDisplayedFrame();
+                OnPropertyChanged(nameof(RightIsPlaying));
             }
         }
 
@@ -236,7 +242,7 @@ namespace DViewer
             {
                 OnPropertyChanged(nameof(LeftHasVideo));
                 OnPropertyChanged(nameof(LeftVideoPath));
-                OnPropertyChanged(nameof(LeftVideoSource));   // <-- NEU
+                OnPropertyChanged(nameof(LeftVideoSource));
                 OnPropertyChanged(nameof(LeftFrameCount));
                 OnPropertyChanged(nameof(LeftHasMultiFrame));
                 OnPropertyChanged(nameof(LeftFrameIndex));
@@ -244,12 +250,16 @@ namespace DViewer
                 OnPropertyChanged(nameof(LeftCanPrev));
                 OnPropertyChanged(nameof(LeftCanNext));
                 RaiseFrameCommandsCanExecute();
+
+                // falls Timer bereits läuft, Intervall an neue FPS anpassen
+                if (_leftTimer?.IsRunning == true)
+                    _leftTimer.Interval = FpsToInterval(Left?.FramesPerSecond);
             }
             else
             {
                 OnPropertyChanged(nameof(RightHasVideo));
                 OnPropertyChanged(nameof(RightVideoPath));
-                OnPropertyChanged(nameof(RightVideoSource));   // <-- NEU
+                OnPropertyChanged(nameof(RightVideoSource));
                 OnPropertyChanged(nameof(RightFrameCount));
                 OnPropertyChanged(nameof(RightHasMultiFrame));
                 OnPropertyChanged(nameof(RightFrameIndex));
@@ -257,6 +267,9 @@ namespace DViewer
                 OnPropertyChanged(nameof(RightCanPrev));
                 OnPropertyChanged(nameof(RightCanNext));
                 RaiseFrameCommandsCanExecute();
+
+                if (_rightTimer?.IsRunning == true)
+                    _rightTimer.Interval = FpsToInterval(Right?.FramesPerSecond);
             }
         }
 
@@ -271,8 +284,27 @@ namespace DViewer
         // ---------- kleine Hilfen ----------
         private static string S(object? v) => v?.ToString() ?? string.Empty;
 
+        //private static string GetTag(DicomFileViewModel? vm, string tagId)
+        //    => vm?.Metadata?.FirstOrDefault(m => string.Equals(m.TagId, tagId, StringComparison.OrdinalIgnoreCase))?.Value ?? string.Empty;
+
+
+
         private static string GetTag(DicomFileViewModel? vm, string tagId)
-            => vm?.Metadata?.FirstOrDefault(m => string.Equals(m.TagId, tagId, StringComparison.OrdinalIgnoreCase))?.Value ?? string.Empty;
+        {
+            if (vm == null || string.IsNullOrWhiteSpace(tagId))
+                return string.Empty;
+
+            // 1) Schnellweg: RowMap (wird in SetMetadata aufgebaut)
+            if (vm.RowMap != null && vm.RowMap.TryGetValue(tagId, out var row) && row != null)
+                return row.Value ?? string.Empty;
+
+            // 2) Fallback: in Metadata-Liste suchen (zur Sicherheit)
+            var match = vm.Metadata?.FirstOrDefault(m =>
+                m?.TagId != null &&
+                string.Equals(m.TagId, tagId, StringComparison.OrdinalIgnoreCase));
+
+            return match?.Value ?? string.Empty;
+        }
 
         private static string GetAny(DicomFileViewModel? vm, params string[] tagIds)
         {
@@ -317,9 +349,6 @@ namespace DViewer
 
         private static string ComposeSpecies(DicomFileViewModel? vm)
         {
-            // DICOM Vet (häufig):
-            // (0010,2201) Patient Species Description
-            // (0010,2292) Patient Breed Description  (manchmal 2202 je nach Hersteller)
             var species = GetAny(vm, "(0010,2201)");
             var breed = GetAny(vm, "(0010,2292)", "(0010,2202)");
             if (!string.IsNullOrWhiteSpace(species) && !string.IsNullOrWhiteSpace(breed))
@@ -365,13 +394,8 @@ namespace DViewer
             using (UIUpdateGuard.Begin())
             {
                 if (isLeft) Left = vm; else Right = vm;
-                //OnPropertyChanged(nameof(Left));
-                //OnPropertyChanged(nameof(Right));
 
-                // Nur die geänderte Seite notifyen ist sauberer, beides geht aber auch.
                 OnPropertyChanged(isLeft ? nameof(Left) : nameof(Right));
-
-
                 RaiseOverlayChanged();
                 RebuildCombined();
                 RaiseMediaChanged(isLeft);
@@ -388,7 +412,6 @@ namespace DViewer
 
             MainThread.BeginInvokeOnMainThread(() =>
             {
-
                 using (UIUpdateGuard.Begin())
                 {
                     if (toLeft)
@@ -409,8 +432,6 @@ namespace DViewer
                     RaiseMediaChanged(toLeft);
                     ResetMediaStateForSide(vm, toLeft);
                 }
-
-
             });
         }
 
@@ -449,7 +470,6 @@ namespace DViewer
                 }
             });
         }
-
 
         // ---------- Overlay-Properties ----------
         // Links
@@ -721,18 +741,10 @@ namespace DViewer
 
             q = _sortCol switch
             {
-                "TagId" => _asc
-                                ? q.OrderBy<CombinedMetadataItem, string>(i => i.TagId, StringComparer.OrdinalIgnoreCase)
-                                : q.OrderByDescending<CombinedMetadataItem, string>(i => i.TagId, StringComparer.OrdinalIgnoreCase),
-                "Name" => _asc
-                                ? q.OrderBy<CombinedMetadataItem, string>(i => i.Name, StringComparer.OrdinalIgnoreCase)
-                                : q.OrderByDescending<CombinedMetadataItem, string>(i => i.Name, StringComparer.OrdinalIgnoreCase),
-                "LeftValue" => _asc
-                                ? q.OrderBy<CombinedMetadataItem, string>(i => S(i.LeftValue), StringComparer.OrdinalIgnoreCase)
-                                : q.OrderByDescending<CombinedMetadataItem, string>(i => S(i.LeftValue), StringComparer.OrdinalIgnoreCase),
-                "RightValue" => _asc
-                                ? q.OrderBy<CombinedMetadataItem, string>(i => S(i.RightValue), StringComparer.OrdinalIgnoreCase)
-                                : q.OrderByDescending<CombinedMetadataItem, string>(i => S(i.RightValue), StringComparer.OrdinalIgnoreCase),
+                "TagId" => _asc ? q.OrderBy(i => i.TagId, StringComparer.OrdinalIgnoreCase) : q.OrderByDescending(i => i.TagId, StringComparer.OrdinalIgnoreCase),
+                "Name" => _asc ? q.OrderBy(i => i.Name, StringComparer.OrdinalIgnoreCase) : q.OrderByDescending(i => i.Name, StringComparer.OrdinalIgnoreCase),
+                "LeftValue" => _asc ? q.OrderBy(i => S(i.LeftValue), StringComparer.OrdinalIgnoreCase) : q.OrderByDescending(i => S(i.LeftValue), StringComparer.OrdinalIgnoreCase),
+                "RightValue" => _asc ? q.OrderBy(i => S(i.RightValue), StringComparer.OrdinalIgnoreCase) : q.OrderByDescending(i => S(i.RightValue), StringComparer.OrdinalIgnoreCase),
                 _ => q
             };
 
@@ -919,35 +931,6 @@ namespace DViewer
         public IReadOnlyList<string> SexOptions => s_sexOptions;
 
         // ---------- MISSING TAG hinzufügen (NEU) ----------
-        //public void AddMissingTagToSide(DicomTagCandidate cand, bool toLeft)
-        //{
-        //    if (cand == null) return;
-
-        //    var list = toLeft ? Left?.Metadata : Right?.Metadata;
-        //    if (list == null) return;
-
-        //    var tagId = cand.TagId?.Trim();
-        //    if (string.IsNullOrWhiteSpace(tagId)) return;
-
-        //    // nichts doppelt
-        //    if (list.Any(m => string.Equals(m.TagId, tagId, StringComparison.OrdinalIgnoreCase)))
-        //        return;
-
-        //    var vr = cand.Vr ?? string.Empty; // Property-Name aus deiner bestehenden Klasse
-        //    var name = cand.Name ?? tagId;
-
-        //    list.Add(new DicomMetadataItem
-        //    {
-        //        TagId = tagId,
-        //        Name = name,
-        //        Vr = vr,
-        //        Value = string.Empty
-        //    });
-
-        //    // kombinierten View refreshen
-        //    RebuildCombined();
-        //}
+        // (unverändert auskommentiert)
     }
-
- 
 }

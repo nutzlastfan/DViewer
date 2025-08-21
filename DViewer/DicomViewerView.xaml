@@ -1,0 +1,276 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView
+    x:Class="DViewer.Controls.DicomViewerView"
+    x:Name="This"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
+    BackgroundColor="Black">
+
+    <ContentView.Resources>
+        <ResourceDictionary>
+            <toolkit:BoolToObjectConverter x:Key="PlayPauseConverter"
+                                           TrueObject="Pause"
+                                           FalseObject="Play"/>
+        </ResourceDictionary>
+    </ContentView.Resources>
+
+    <Grid x:Name="Root">
+
+        <!-- Zentraler Viewport (Bild + Video + Overlays + Toolbar) -->
+        <Grid x:Name="ImageLayer">
+
+            <!-- Bild -->
+            <Image x:Name="Img"
+                   Aspect="AspectFit"
+                   HorizontalOptions="Center"
+                   VerticalOptions="Center">
+                <Image.GestureRecognizers>
+                    <TapGestureRecognizer NumberOfTapsRequired="2"
+                                          Tapped="OnFullscreenTapped"/>
+                </Image.GestureRecognizers>
+            </Image>
+
+            <!-- Video -->
+            <toolkit:MediaElement x:Name="Player"
+                                  HorizontalOptions="Fill"
+                                  VerticalOptions="Fill"
+                                  ShouldAutoPlay="True"
+                                  ShouldShowPlaybackControls="True"
+                                  ShouldLoopPlayback="True" />
+
+            <!-- ===================== OVERLAYS ===================== -->
+
+            <!-- TOP LEFT -->
+            <Grid HorizontalOptions="Start"
+                  VerticalOptions="Start"
+                  Margin="12" Padding="10"
+                  BackgroundColor="#19000000"
+                  MaximumWidthRequest="600"
+                  InputTransparent="True">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <Label Grid.Row="0"
+                       Text="{Binding Source={x:Reference This}, Path=OverlayPatientNameWithSex}"
+                       FontAttributes="Bold" TextColor="White"
+                       LineBreakMode="TailTruncation" MaxLines="1"/>
+
+                <Grid Grid.Row="1" ColumnDefinitions="Auto,*" ColumnSpacing="6">
+                    <Label Grid.Column="0" Text="Species" FontAttributes="Italic" TextColor="#DDFFFFFF"/>
+                    <Label Grid.Column="1"
+                           Text="{Binding Source={x:Reference This}, Path=OverlaySpeciesBreed}"
+                           TextColor="White" LineBreakMode="TailTruncation" MaxLines="1"/>
+                </Grid>
+
+                <Grid Grid.Row="2" ColumnDefinitions="Auto,*" ColumnSpacing="6">
+                    <Label Grid.Column="0" Text="PID" FontAttributes="Italic" TextColor="#DDFFFFFF"/>
+                    <Label Grid.Column="1"
+                           Text="{Binding Source={x:Reference This}, Path=OverlayPatientID}"
+                           TextColor="White" LineBreakMode="TailTruncation" MaxLines="1"/>
+                </Grid>
+
+                <Grid Grid.Row="3" ColumnDefinitions="Auto,*" ColumnSpacing="6">
+                    <Label Grid.Column="0" Text="DOB" FontAttributes="Italic" TextColor="#DDFFFFFF"/>
+                    <Label Grid.Column="1"
+                           Text="{Binding Source={x:Reference This}, Path=OverlayBirthDateDisplay}"
+                           TextColor="White"/>
+                </Grid>
+
+                <Grid Grid.Row="4" ColumnDefinitions="Auto,*" ColumnSpacing="6">
+                    <Label Grid.Column="0" Text="Other PID" FontAttributes="Italic" TextColor="#DDFFFFFF"/>
+                    <Label Grid.Column="1"
+                           Text="{Binding Source={x:Reference This}, Path=OverlayOtherPid}"
+                           TextColor="White" LineBreakMode="TailTruncation" MaxLines="1"/>
+                </Grid>
+            </Grid>
+
+            <!-- TOP RIGHT -->
+            <Grid HorizontalOptions="End"
+                  VerticalOptions="Start"
+                  Margin="12" Padding="10"
+                  BackgroundColor="#19000000"
+                  MaximumWidthRequest="600"
+                  InputTransparent="True">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <Grid Grid.Row="0" ColumnDefinitions="Auto,*" ColumnSpacing="6">
+                    <Label Grid.Column="0" Text="Instance" FontAttributes="Italic" TextColor="#DDFFFFFF"/>
+                    <Label Grid.Column="1"
+                           Text="{Binding Source={x:Reference This}, Path=OverlayInstanceNumber}"
+                           TextColor="White" LineBreakMode="TailTruncation" MaxLines="1"/>
+                </Grid>
+
+                <Grid Grid.Row="1" ColumnDefinitions="Auto,*" ColumnSpacing="6">
+                    <Label Grid.Column="0" Text="Study" FontAttributes="Italic" TextColor="#DDFFFFFF"/>
+                    <Label Grid.Column="1"
+                           Text="{Binding Source={x:Reference This}, Path=OverlayStudyDescription}"
+                           TextColor="White" LineBreakMode="TailTruncation" MaxLines="1"/>
+                </Grid>
+
+                <Grid Grid.Row="2" ColumnDefinitions="Auto,*" ColumnSpacing="6">
+                    <Label Grid.Column="0" Text="Study Date" FontAttributes="Italic" TextColor="#DDFFFFFF"/>
+                    <Label Grid.Column="1"
+                           Text="{Binding Source={x:Reference This}, Path=OverlayStudyDate}"
+                           TextColor="White"/>
+                </Grid>
+
+                <Grid Grid.Row="3" ColumnDefinitions="Auto,*" ColumnSpacing="6">
+                    <Label Grid.Column="0" Text="Study Time" FontAttributes="Italic" TextColor="#DDFFFFFF"/>
+                    <Label Grid.Column="1"
+                           Text="{Binding Source={x:Reference This}, Path=OverlayStudyTime}"
+                           TextColor="White"/>
+                </Grid>
+            </Grid>
+
+            <!-- BOTTOM LEFT -->
+            <Grid HorizontalOptions="Start"
+                  VerticalOptions="End"
+                  Margin="12" Padding="10"
+                  BackgroundColor="#19000000"
+                  InputTransparent="True">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <Label Grid.Row="0"
+                       Text="{Binding Source={x:Reference This}, Path=OverlaySeriesNumber, StringFormat='Ser: {0}'}"
+                       TextColor="White"/>
+                <Label Grid.Row="1"
+                       Text="{Binding Source={x:Reference This}, Path=OverlaySliceLocation, StringFormat='Loc: {0}'}"
+                       TextColor="White"/>
+                <Label Grid.Row="2"
+                       Text="{Binding Source={x:Reference This}, Path=OverlaySliceThickness, StringFormat='Thick: {0}'}"
+                       TextColor="White"/>
+            </Grid>
+
+            <!-- BOTTOM RIGHT (WL/Zoom) -->
+            <Grid x:Name="WlOverlay"
+                  HorizontalOptions="End"
+                  VerticalOptions="End"
+                  Margin="12" Padding="10"
+                  BackgroundColor="#19000000"
+                  InputTransparent="True">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Label Grid.Row="0"
+                       Text="{Binding Source={x:Reference This}, Path=OverlayWindowLevelText}"
+                       TextColor="White"/>
+                <Label Grid.Row="1"
+                       Text="{Binding Source={x:Reference This}, Path=OverlayZoomText}"
+                       TextColor="White"/>
+            </Grid>
+
+            <!-- FRAME OVERLAY (Multiframe) -->
+            <Grid x:Name="FrameOverlay"
+                  HorizontalOptions="Fill"
+                  VerticalOptions="End"
+                  Padding="8" Margin="8"
+                  BackgroundColor="#19000000"
+                  IsVisible="False">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <Button Grid.Column="0" Text="⏮"
+                        Command="{Binding Source={x:Reference This}, Path=PrevFrameCommand}"/>
+
+                <Slider Grid.Column="1"
+                        Minimum="0"
+                        Maximum="{Binding Source={x:Reference This}, Path=Item.FrameCount}"
+                        Value="{Binding Source={x:Reference This}, Path=FrameIndex, Mode=TwoWay}"/>
+
+                <Button Grid.Column="2" Text="⏭"
+                        Command="{Binding Source={x:Reference This}, Path=NextFrameCommand}"/>
+
+                <Button Grid.Column="3"
+                        Text="{Binding Source={x:Reference This}, Path=IsPlaying, Converter={StaticResource PlayPauseConverter}}"
+                        Command="{Binding Source={x:Reference This}, Path=PlayPauseCommand}"/>
+
+                <Label Grid.Column="4" Margin="8,0,0,0"
+                       Text="{Binding Source={x:Reference This}, Path=Item.FrameCount, StringFormat=' {0} f'}"
+                       TextColor="White" VerticalTextAlignment="Center"/>
+            </Grid>
+
+            <!-- ======= TOP TOOLBAR (peeking) ======= -->
+            <Grid x:Name="TopToolbar"
+                  HorizontalOptions="Fill"
+                  VerticalOptions="Start"
+                  BackgroundColor="#55000000"
+                  Padding="6,6"
+                  InputTransparent="False">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Cursor Tool -->
+                <Frame x:Name="CursorToolFrame"
+                       Grid.Column="0"
+                       Padding="8" Margin="4,0"
+                       HasShadow="False"
+                       CornerRadius="6"
+                       BackgroundColor="#22FFFFFF">
+                    <Button x:Name="CursorToolBtn"
+                            Text="🖱"
+                            FontSize="18"
+                            BackgroundColor="Transparent"
+                            Clicked="OnCursorToolClicked"/>
+                </Frame>
+
+                <!-- Measure Tool -->
+                <Frame x:Name="MeasureToolFrame"
+                       Grid.Column="1"
+                       Padding="8" Margin="4,0"
+                       HasShadow="False"
+                       CornerRadius="6"
+                       BackgroundColor="Transparent">
+                    <Button x:Name="MeasureToolBtn"
+                            Text="📏"
+                            FontSize="18"
+                            BackgroundColor="Transparent"
+                            Clicked="OnMeasureToolClicked"/>
+                </Frame>
+
+                <!-- (Spacer rechts) -->
+                <Grid Grid.Column="2"/>
+            </Grid>
+
+            <!-- Property-Element am Ende (verhindert XLS0509) -->
+            <Grid.GestureRecognizers>
+                <TapGestureRecognizer NumberOfTapsRequired="2"
+                                      Tapped="OnFullscreenTapped"/>
+            </Grid.GestureRecognizers>
+        </Grid>
+
+        <!-- Root Gesten -->
+        <Grid.GestureRecognizers>
+            <PinchGestureRecognizer PinchUpdated="OnPinchUpdated" />
+            <PanGestureRecognizer   PanUpdated="OnPanUpdated" />
+            <PanGestureRecognizer   PanUpdated="OnWlPanUpdated" TouchPoints="2" />
+            <PointerGestureRecognizer
+                PointerPressed="OnPointerPressed"
+                PointerMoved="OnPointerMoved"
+                PointerReleased="OnPointerReleased" />
+        </Grid.GestureRecognizers>
+    </Grid>
+</ContentView>

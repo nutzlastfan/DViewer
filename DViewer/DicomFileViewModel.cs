@@ -10,13 +10,8 @@ namespace DViewer
 {
     /// <summary>
     /// ViewModel für eine einzelne DICOM-Datei (eine Seite).
-    /// Enthält:
-    /// - Dateiname
-    /// - Vorschaubild (Image)
-    /// - Metadaten (Rows + read-only Metadata)
-    /// - Media-Infos: Video (.mp4/.mpg) ODER Multiframe (FrameCount + Frame-Bildprovider)
     /// </summary>
-    public sealed class DicomFileViewModel : INotifyPropertyChanged
+    public sealed class DicomFileViewModel : INotifyPropertyChanged, IFrameProviderSink, IWindowingSink
     {
         // --------- Datei / Preview ---------
         private string _fileName = string.Empty;
@@ -27,29 +22,62 @@ namespace DViewer
         }
 
         private ImageSource? _image;
-        /// <summary>Aktuell angezeigte Vorschaugrafik (z.B. Frame 0 oder selektierter Frame).</summary>
         public ImageSource? Image
         {
             get => _image;
-            set { if (ReferenceEquals(_image, value)) return; _image = value; OnPropertyChanged(); }
+            set { if (_image == value) return; _image = value; OnPropertyChanged(); }
         }
 
+        // --------- Multiframe (cine) ---------
+        public int FrameCount { get; private set; }
 
+        /// <summary>On-demand Frame-Lieferant (vom Loader gesetzt).</summary>
+        public Func<int, ImageSource?>? GetFrameImageSource { get; private set; }
+
+        /// <summary>Optionaler Prefetch-Hinweis (vom Loader gesetzt).</summary>
+        public Action<int>? PrefetchFrames { get; private set; }
+
+        /// <summary>Meta: geschätzte Frames/Sekunde (vom Loader gesetzt).</summary>
+        public double? FramesPerSecond { get; set; }   // bewusst public set: Loader setzt per Reflection
+
+        // --------- Window/Level ---------
+        /// <summary>WL-Renderer: (center,width,frame) -> ImageSource.</summary>
         public Func<double, double, int, ImageSource>? RenderFrameWithWindow { get; private set; }
+
         public double? DefaultWindowCenter { get; private set; }
         public double? DefaultWindowWidth { get; private set; }
 
-        internal void SetWindowing(Func<double, double, int, ImageSource> renderer, double? wc, double? ww)
+        // IWindowingSink
+        public void SetWindowing(Func<double, double, int, ImageSource> render, double? defaultCenter, double? defaultWidth)
         {
-            RenderFrameWithWindow = renderer;
-            DefaultWindowCenter = wc;
-            DefaultWindowWidth = ww;
+            RenderFrameWithWindow = render;
+            DefaultWindowCenter = defaultCenter;
+            DefaultWindowWidth = defaultWidth;
+
+            OnPropertyChanged(nameof(RenderFrameWithWindow));
+            OnPropertyChanged(nameof(DefaultWindowCenter));
+            OnPropertyChanged(nameof(DefaultWindowWidth));
         }
 
+        // IFrameProviderSink (einzige saubere Variante – keine Überlastung mehr!)
+        public void SetFrameProvider(int frameCount, Func<int, ImageSource?> getFrame, Action<int>? prefetch = null)
+        {
+            // Multiframe aktiv -> Video deaktivieren
+            VideoPath = null;
+            VideoMime = null;
 
-        // --------- Media (Video / Multiframe) ---------
+            FrameCount = frameCount < 0 ? 0 : frameCount;
+            GetFrameImageSource = getFrame;
+            PrefetchFrames = prefetch;
 
-        /// <summary>Pfad zu extrahiertem Videostream (z.B. .mp4). Null, wenn kein Video.</summary>
+            OnPropertyChanged(nameof(FrameCount));
+            OnPropertyChanged(nameof(GetFrameImageSource));
+            OnPropertyChanged(nameof(PrefetchFrames));
+            OnPropertyChanged(nameof(HasMultiFrame));
+        }
+
+        // --------- Media (Video) ---------
+        private string? _videoPath;
         public string? VideoPath
         {
             get => _videoPath;
@@ -62,42 +90,13 @@ namespace DViewer
                 OnPropertyChanged(nameof(HasMultiFrame));
             }
         }
-        private string? _videoPath;
 
-        /// <summary>Optionales MIME des Videos (z.B. "video/mp4").</summary>
+        private string? _videoMime;
         public string? VideoMime
         {
             get => _videoMime;
             private set { if (_videoMime == value) return; _videoMime = value; OnPropertyChanged(); }
         }
-        private string? _videoMime;
-
-        /// <summary>Anzahl Frames (nur Multiframe, nicht Video).</summary>
-        public int FrameCount
-        {
-            get => _frameCount;
-            private set
-            {
-                if (_frameCount == value) return;
-                _frameCount = value < 0 ? 0 : value;
-                OnPropertyChanged();
-                OnPropertyChanged(nameof(HasMultiFrame));
-            }
-        }
-        private int _frameCount;
-
-        /// <summary>Delegate: Liefert für einen Frameindex ein ImageSource (nur Multiframe).</summary>
-        public Func<int, ImageSource?>? GetFrameImageSource
-        {
-            get => _getFrameImageSource;
-            private set
-            {
-                if (_getFrameImageSource == value) return;
-                _getFrameImageSource = value;
-                OnPropertyChanged();
-            }
-        }
-        private Func<int, ImageSource?>? _getFrameImageSource;
 
         /// <summary>True, wenn ein Video (MediaElement) angezeigt werden soll.</summary>
         public bool HasVideo => !string.IsNullOrEmpty(VideoPath);
@@ -111,20 +110,18 @@ namespace DViewer
             // Video aktiv -> Multiframe deaktivieren
             FrameCount = 0;
             GetFrameImageSource = null;
+            PrefetchFrames = null;
 
             VideoPath = path;
             VideoMime = mime;
-        }
 
-        /// <summary>Setzt Multiframe-Infos (Frame-Anzahl + Provider); setzt Video-Daten zurück.</summary>
-        public void SetFrameProvider(int frameCount, Func<int, ImageSource?>? provider)
-        {
-            // Multiframe aktiv -> Video deaktivieren
-            VideoPath = null;
-            VideoMime = null;
-
-            FrameCount = frameCount < 0 ? 0 : frameCount;
-            GetFrameImageSource = provider;
+            // Bei Video ist FPS Sache des MediaElements – FramesPerSecond für cine zurücksetzen
+            FramesPerSecond = null;
+            OnPropertyChanged(nameof(FramesPerSecond));
+            OnPropertyChanged(nameof(FrameCount));
+            OnPropertyChanged(nameof(GetFrameImageSource));
+            OnPropertyChanged(nameof(PrefetchFrames));
+            OnPropertyChanged(nameof(HasMultiFrame));
         }
 
         /// <summary>Alles Media-bezogene zurücksetzen.</summary>
@@ -134,21 +131,25 @@ namespace DViewer
             VideoMime = null;
             FrameCount = 0;
             GetFrameImageSource = null;
+            PrefetchFrames = null;
+            FramesPerSecond = null;
+
+            OnPropertyChanged(nameof(FrameCount));
+            OnPropertyChanged(nameof(GetFrameImageSource));
+            OnPropertyChanged(nameof(PrefetchFrames));
+            OnPropertyChanged(nameof(FramesPerSecond));
+            OnPropertyChanged(nameof(HasVideo));
+            OnPropertyChanged(nameof(HasMultiFrame));
         }
 
         // --------- Metadaten (seitenspezifisch) ---------
-
-        /// <summary>Reine, seitenspezifische Zeilen zum Binden in der UI.</summary>
         public ObservableCollection<SideRow> Rows { get; } = new();
 
-        /// <summary>Legacy: Roh-Metadaten wie vorher (nur lesen).</summary>
         public IReadOnlyList<DicomMetadataItem> Metadata { get; private set; } = Array.Empty<DicomMetadataItem>();
 
-        /// <summary>Schnelles Lookup der Zeilen nach TagId.</summary>
         public IReadOnlyDictionary<string, SideRow> RowMap => _rowMap;
         private readonly Dictionary<string, SideRow> _rowMap = new(StringComparer.OrdinalIgnoreCase);
 
-        /// <summary>Befüllt die Seite mit Metadaten (ersetzt den bisherigen Inhalt).</summary>
         public void SetMetadata(IEnumerable<DicomMetadataItem> items)
         {
             if (items == null)
@@ -164,7 +165,6 @@ namespace DViewer
 
             Metadata = list;
 
-            // Rows neu aufbauen
             Rows.Clear();
             _rowMap.Clear();
 
@@ -189,7 +189,6 @@ namespace DViewer
             OnPropertyChanged(nameof(Metadata));
         }
 
-        /// <summary>Setzt alles zurück (z.B. bei Fehlern).</summary>
         public void Clear()
         {
             Metadata = Array.Empty<DicomMetadataItem>();
@@ -204,7 +203,7 @@ namespace DViewer
 
         // --------- INotifyPropertyChanged ---------
         public event PropertyChangedEventHandler? PropertyChanged;
-        private void OnPropertyChanged([CallerMemberName] string? name = null)
-            => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+        private void OnPropertyChanged([CallerMemberName] string? n = null)
+            => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(n));
     }
 }
