@@ -1,9 +1,9 @@
 ﻿using System;
 using System.Collections.ObjectModel;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
-using System.Xml.Linq;
 using Microsoft.Maui.Controls;
 
 namespace DViewer
@@ -41,7 +41,9 @@ namespace DViewer
         // ---------- Laden/Speichern ----------
         public async Task LoadAsync()
         {
-            var model = await AppSettingsStore.LoadAsync();
+            var store = AppSettingsStore.Instance;
+            await store.LoadAsync();                 // <-- Instanzmethode über Singleton
+            var model = store.Settings;              // aktuelle Settings
 
             LocalAeTitle = model.LocalAeTitle ?? "DVIEWER";
             LocalPort = model.LocalPort.ToString();
@@ -57,35 +59,37 @@ namespace DViewer
 
         public async Task SaveAsync()
         {
-            var model = new AppSettings
+            var store = AppSettingsStore.Instance;
+
+            // Bequem: Änderungen anwenden und direkt persistieren
+            await store.UpdateAsync(s =>
             {
-                LocalAeTitle = LocalAeTitle?.Trim() ?? "DVIEWER",
-                LocalPort = TryParseInt(LocalPort, 104),
-                LocalStorageFolder = LocalStorageFolder?.Trim() ?? "",
-                LocalMaxPdu = TryParseInt(LocalMaxPdu, 16384),
-                LocalAcceptIncoming = LocalAcceptIncoming,
-                LocalUseTls = LocalUseTls,
-                SendNodes = new(SendNodes),
-                WorklistNodes = new(WorklistNodes),
-                QueryRetrieveNodes = new(QueryRetrieveNodes)
-            };
-            await AppSettingsStore.SaveAsync(model);
+                s.LocalAeTitle = LocalAeTitle?.Trim() ?? "DVIEWER";
+                s.LocalPort = TryParseInt(LocalPort, 104);
+                s.LocalStorageFolder = LocalStorageFolder?.Trim() ?? "";
+                s.LocalMaxPdu = TryParseInt(LocalMaxPdu, 16384);
+                s.LocalAcceptIncoming = LocalAcceptIncoming;
+                s.LocalUseTls = LocalUseTls;
+
+                s.SendNodes = new(SendNodes);
+                s.WorklistNodes = new(WorklistNodes);
+                s.QueryRetrieveNodes = new(QueryRetrieveNodes);
+            });
         }
 
         // ---------- UI-Helfer ----------
         public async Task BrowseStorageAsync(Page page)
         {
-            // Minimal & plattform-sicher: Standardpfad vorschlagen
             var suggested = System.IO.Path.Combine(Microsoft.Maui.Storage.FileSystem.AppDataDirectory, "dicom");
             if (string.IsNullOrWhiteSpace(LocalStorageFolder))
                 LocalStorageFolder = suggested;
 
-            await page.DisplayAlert("Speicherpfad", $"Aktueller Pfad:\n{LocalStorageFolder}\n\n(Anpassung per Code/Plattformdialog möglich)", "OK");
+            await page.DisplayAlert("Speicherpfad",
+                $"Aktueller Pfad:\n{LocalStorageFolder}\n\n(Anpassung per Code/Plattformdialog möglich)", "OK");
         }
 
         public async Task TestLocalScpAsync(Page page)
         {
-            // Placeholder-Test
             await page.DisplayAlert("Test SCP",
                 $"AE: {LocalAeTitle}\nPort: {LocalPort}\nTLS: {(LocalUseTls ? "An" : "Aus")}\n\n(Implementiere hier echten Netzwerk-Test)",
                 "OK");
@@ -121,9 +125,11 @@ namespace DViewer
             sel.Port = edited.Port;
             sel.CalledAe = edited.CalledAe;
             sel.UseTls = edited.UseTls;
+
             OnPropertyChanged(nameof(SelectedSendNode));
             OnPropertyChanged(nameof(SelectedMwNode));
             OnPropertyChanged(nameof(SelectedQrNode));
+
             await SaveAsync();
         }
 
@@ -161,7 +167,7 @@ namespace DViewer
             _ => null
         };
 
-        static void Replace(ObservableCollection<DicomNode> target, System.Collections.Generic.IEnumerable<DicomNode>? src)
+        static void Replace(ObservableCollection<DicomNode> target, IEnumerable<DicomNode>? src)
         {
             target.Clear();
             if (src == null) return;
@@ -181,11 +187,18 @@ namespace DViewer
 
             string portStr = await page.DisplayPromptAsync(title, "Port:", initialValue: preset.Port.ToString(), keyboard: Keyboard.Numeric) ?? "104";
             _ = int.TryParse(portStr, out int port);
-            string called = await page.DisplayPromptAsync(title, "Called AE (optional):", initialValue: preset.CalledAe) ?? "";
 
+            string called = await page.DisplayPromptAsync(title, "Called AE (optional):", initialValue: preset.CalledAe) ?? "";
             bool useTls = await page.DisplayAlert(title, "TLS verwenden?", "Ja", "Nein");
 
-            return new DicomNode { AeTitle = ae.Trim(), Host = host.Trim(), Port = port > 0 ? port : 104, CalledAe = called.Trim(), UseTls = useTls };
+            return new DicomNode
+            {
+                AeTitle = ae.Trim(),
+                Host = host.Trim(),
+                Port = port > 0 ? port : 104,
+                CalledAe = called.Trim(),
+                UseTls = useTls
+            };
         }
 
         // INotifyPropertyChanged
