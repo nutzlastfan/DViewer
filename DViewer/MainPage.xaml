@@ -13,6 +13,130 @@
 
     <ContentPage.Resources>
         <ResourceDictionary>
+
+            <!-- Farben für Akzent -->
+            <Color x:Key="AccentNormal">#6A5ACD</Color>
+            <Color x:Key="AccentHover">#7B71E0</Color>
+            <Color x:Key="AccentPressed">#5B50C9</Color>
+            <Color x:Key="AccentDisabled">#3F3A68</Color>
+            <Color x:Key="DangerNormal">#C74343</Color>
+            <Color x:Key="DangerHover">#D35A5A</Color>
+            <Color x:Key="DangerPressed">#A63434</Color>
+
+            <!-- Kompakte pill-Buttons -->
+            <Style x:Key="ChipButton" TargetType="Button">
+                <Setter Property="HeightRequest" Value="22"/>
+                <Setter Property="Padding" Value="12,0"/>
+                <Setter Property="FontSize" Value="13"/>
+                <Setter Property="FontAttributes" Value="Bold"/>
+                <Setter Property="CornerRadius" Value="15"/>
+                <Setter Property="BackgroundColor" Value="{StaticResource AccentNormal}"/>
+                <Setter Property="TextColor" Value="White"/>
+                <Setter Property="BorderWidth" Value="0"/>
+                <Setter Property="Shadow">
+                    <Setter.Value>
+                        <Shadow Radius="4" Opacity="0.25"/>
+                    </Setter.Value>
+                </Setter>
+                <Setter Property="VisualStateManager.VisualStateGroups">
+                    <VisualStateGroupList>
+                        <VisualStateGroup x:Name="CommonStates">
+                            <VisualState x:Name="Normal"/>
+                            <VisualState x:Name="PointerOver">
+                                <VisualState.Setters>
+                                    <Setter Property="BackgroundColor" Value="{StaticResource AccentHover}"/>
+                                </VisualState.Setters>
+                            </VisualState>
+                            <VisualState x:Name="Pressed">
+                                <VisualState.Setters>
+                                    <Setter Property="BackgroundColor" Value="{StaticResource AccentPressed}"/>
+                                </VisualState.Setters>
+                            </VisualState>
+                            <VisualState x:Name="Disabled">
+                                <VisualState.Setters>
+                                    <Setter Property="BackgroundColor" Value="{StaticResource AccentDisabled}"/>
+                                    <Setter Property="TextColor" Value="#80FFFFFF"/>
+                                </VisualState.Setters>
+                            </VisualState>
+                        </VisualStateGroup>
+                    </VisualStateGroupList>
+                </Setter>
+            </Style>
+
+            <!-- Outlined/Ghost-Variante -->
+            <Style x:Key="ChipGhostButton" TargetType="Button" BasedOn="{StaticResource ChipButton}">
+                <Setter Property="BackgroundColor" Value="Transparent"/>
+                <Setter Property="BorderColor" Value="{StaticResource AccentNormal}"/>
+                <Setter Property="BorderWidth" Value="1"/>
+                <Setter Property="TextColor" Value="{StaticResource AccentHover}"/>
+                <Setter Property="Shadow">
+                    <Setter.Value>
+                        <Shadow Opacity="0"/>
+                    </Setter.Value>
+                </Setter>
+                <Setter Property="VisualStateManager.VisualStateGroups">
+                    <VisualStateGroupList>
+                        <VisualStateGroup x:Name="CommonStates">
+                            <VisualState x:Name="Normal"/>
+                            <VisualState x:Name="PointerOver">
+                                <VisualState.Setters>
+                                    <Setter Property="BorderColor" Value="{StaticResource AccentHover}"/>
+                                    <Setter Property="TextColor" Value="{StaticResource AccentHover}"/>
+                                </VisualState.Setters>
+                            </VisualState>
+                            <VisualState x:Name="Pressed">
+                                <VisualState.Setters>
+                                    <Setter Property="BorderColor" Value="{StaticResource AccentPressed}"/>
+                                    <Setter Property="TextColor" Value="{StaticResource AccentPressed}"/>
+                                </VisualState.Setters>
+                            </VisualState>
+                            <VisualState x:Name="Disabled">
+                                <VisualState.Setters>
+                                    <Setter Property="BorderColor" Value="#40808080"/>
+                                    <Setter Property="TextColor" Value="#80FFFFFF"/>
+                                </VisualState.Setters>
+                            </VisualState>
+                        </VisualStateGroup>
+                    </VisualStateGroupList>
+                </Setter>
+            </Style>
+
+            <!-- Destructive -->
+            <Style x:Key="ChipDangerButton" TargetType="Button" BasedOn="{StaticResource ChipButton}">
+                <Setter Property="BackgroundColor" Value="{StaticResource DangerNormal}"/>
+                <Setter Property="VisualStateManager.VisualStateGroups">
+                    <VisualStateGroupList>
+                        <VisualStateGroup x:Name="CommonStates">
+                            <VisualState x:Name="Normal"/>
+                            <VisualState x:Name="PointerOver">
+                                <VisualState.Setters>
+                                    <Setter Property="BackgroundColor" Value="{StaticResource DangerHover}"/>
+                                </VisualState.Setters>
+                            </VisualState>
+                            <VisualState x:Name="Pressed">
+                                <VisualState.Setters>
+                                    <Setter Property="BackgroundColor" Value="{StaticResource DangerPressed}"/>
+                                </VisualState.Setters>
+                            </VisualState>
+                            <VisualState x:Name="Disabled">
+                                <VisualState.Setters>
+                                    <Setter Property="BackgroundColor" Value="#60404040"/>
+                                    <Setter Property="TextColor" Value="#80FFFFFF"/>
+                                </VisualState.Setters>
+                            </VisualState>
+                        </VisualStateGroup>
+                    </VisualStateGroupList>
+                </Setter>
+            </Style>
+
+            <!-- Kleine Icon-Variante (z. B. "…") -->
+            <Style x:Key="ChipIconButton" TargetType="Button" BasedOn="{StaticResource ChipButton}">
+                <Setter Property="WidthRequest" Value="34"/>
+                <Setter Property="Padding" Value="0"/>
+                <Setter Property="CornerRadius" Value="8"/>
+            </Style>
+
+            <!-- Converter & weitere Styles -->
             <local:DoubleToGridLengthConverter x:Key="StarConverter" />
             <local:AlternateBackgroundConverter x:Key="AltBgConverter" />
             <local:FormatDateDisplayConverter x:Key="FormatDateDisplay" />
@@ -30,199 +154,479 @@
                 <Setter Property="PlaceholderColor" Value="{AppThemeBinding Light=#888888, Dark=#888888}"/>
             </Style>
 
+            <!-- Floating Action Buttons für Overlay (+ / 💾) -->
             <Style x:Key="FabSmall" TargetType="Button">
-                <Setter Property="WidthRequest" Value="36"/>
-                <Setter Property="HeightRequest" Value="36"/>
+                <Setter Property="WidthRequest" Value="22"/>
+                <Setter Property="HeightRequest" Value="22"/>
                 <Setter Property="CornerRadius" Value="18"/>
                 <Setter Property="BackgroundColor" Value="{AppThemeBinding Light=#6A5ACD, Dark=#4C6A5ACD}"/>
                 <Setter Property="TextColor" Value="White"/>
                 <Setter Property="FontAttributes" Value="Bold"/>
                 <Setter Property="Padding" Value="0"/>
             </Style>
+
         </ResourceDictionary>
     </ContentPage.Resources>
 
-    <!-- Reihen: 0 Bilder (mit Overlay), 1 Filter, 2 Haupttabelle -->
-    <Grid RowDefinitions="Auto,Auto,*" ColumnDefinitions="*">
+    <!-- Zwei Zeilen: 0 = Viewer (links/rechts), 1 = Tabs/Content -->
+    <Grid RowDefinitions="*,*" RowSpacing="8">
 
-        <!-- 0) Viewer (links/rechts) -->
         <!-- 0) Viewer (links/rechts) -->
         <Grid Grid.Row="0" ColumnDefinitions="*,*" ColumnSpacing="8">
 
             <!-- LINKS -->
             <Frame Grid.Column="0" HasShadow="True" CornerRadius="6" Padding="0">
                 <Grid>
-                    <!-- Viewer zuerst -->
-                    <controls:DicomViewerView x:Name="LeftViewer" HeightRequest="500"
-                                                  Item="{Binding Left}"
-    VideoSource="{Binding LeftVideoSource}"
-    FrameIndex="{Binding LeftFrameIndex, Mode=TwoWay}"
-                                      HasVideo="{Binding LeftHasVideo}"
-                                      PrevFrameCommand="{Binding LeftPrevFrameCommand}"
-                                      NextFrameCommand="{Binding LeftNextFrameCommand}"
-                                      PlayPauseCommand="{Binding LeftPlayPauseCommand}"
-                                      IsPlaying="{Binding LeftIsPlaying}"
-                                      PatientNameWithSex="{Binding LeftPatientNameWithSex}"
-                                      Species="{Binding LeftSpecies}"
-                                      PatientID="{Binding LeftPatientID}"
-                                      BirthDateDisplay="{Binding LeftBirthDateDisplay}"
-                                      OtherPid="{Binding LeftOtherPid}" />
-
-                    <!-- L-Button oben darüber legen -->
+                    <controls:DicomViewerView x:Name="LeftViewer"
+                                              Item="{Binding Left}"
+                                              VideoSource="{Binding LeftVideoSource}"
+                                              FrameIndex="{Binding LeftFrameIndex, Mode=TwoWay}"
+                                              HasVideo="{Binding LeftHasVideo}"
+                                              PrevFrameCommand="{Binding LeftPrevFrameCommand}"
+                                              NextFrameCommand="{Binding LeftNextFrameCommand}"
+                                              PlayPauseCommand="{Binding LeftPlayPauseCommand}"
+                                              IsPlaying="{Binding LeftIsPlaying}"
+                                              PatientNameWithSex="{Binding LeftPatientNameWithSex}"
+                                              Species="{Binding LeftSpecies}"
+                                              PatientID="{Binding LeftPatientID}"
+                                              BirthDateDisplay="{Binding LeftBirthDateDisplay}"
+                                              OtherPid="{Binding LeftOtherPid}" />
                     <Button Text="L"
-                    CornerRadius="18" WidthRequest="36" HeightRequest="36"
-                    FontAttributes="Bold" ZIndex="20"
-                    HorizontalOptions="Start" VerticalOptions="Center" Margin="8"
-                    Clicked="OnOpenLeftClicked"/>
+                            Style="{StaticResource ChipButton}"
+                            WidthRequest="36" HeightRequest="36" CornerRadius="18" Padding="0"
+                            ZIndex="20"
+                            HorizontalOptions="Start" VerticalOptions="Center" Margin="8"
+                            Clicked="OnOpenLeftClicked"/>
                 </Grid>
             </Frame>
 
             <!-- RECHTS -->
             <Frame Grid.Column="1" HasShadow="True" CornerRadius="6" Padding="0">
                 <Grid>
-                    <controls:DicomViewerView x:Name="RightViewer" HeightRequest="500"
-                                      Item="{Binding Right}"
-                                      HasVideo="{Binding RightHasVideo}"
-                                      VideoSource="{Binding RightVideoSource}"
-                                      FrameIndex="{Binding RightFrameIndex, Mode=TwoWay}"
-                                      PrevFrameCommand="{Binding RightPrevFrameCommand}"
-                                      NextFrameCommand="{Binding RightNextFrameCommand}"
-                                      PlayPauseCommand="{Binding RightPlayPauseCommand}"
-                                      IsPlaying="{Binding RightIsPlaying}"
-                                      PatientNameWithSex="{Binding RightPatientNameWithSex}"
-                                      Species="{Binding RightSpecies}"
-                                      PatientID="{Binding RightPatientID}"
-                                      BirthDateDisplay="{Binding RightBirthDateDisplay}"
-                                      OtherPid="{Binding RightOtherPid}" />
-
+                    <controls:DicomViewerView x:Name="RightViewer"
+                                              Item="{Binding Right}"
+                                              HasVideo="{Binding RightHasVideo}"
+                                              VideoSource="{Binding RightVideoSource}"
+                                              FrameIndex="{Binding RightFrameIndex, Mode=TwoWay}"
+                                              PrevFrameCommand="{Binding RightPrevFrameCommand}"
+                                              NextFrameCommand="{Binding RightNextFrameCommand}"
+                                              PlayPauseCommand="{Binding RightPlayPauseCommand}"
+                                              IsPlaying="{Binding RightIsPlaying}"
+                                              PatientNameWithSex="{Binding RightPatientNameWithSex}"
+                                              Species="{Binding RightSpecies}"
+                                              PatientID="{Binding RightPatientID}"
+                                              BirthDateDisplay="{Binding RightBirthDateDisplay}"
+                                              OtherPid="{Binding RightOtherPid}" />
                     <Button Text="R"
-                    CornerRadius="18" WidthRequest="36" HeightRequest="36"
-                    FontAttributes="Bold" ZIndex="20"
-                    HorizontalOptions="Start" VerticalOptions="Center" Margin="8"
-                    Clicked="OnOpenRightClicked"/>
+                            Style="{StaticResource ChipButton}"
+                            WidthRequest="36" HeightRequest="36" CornerRadius="18" Padding="0"
+                            ZIndex="20"
+                            HorizontalOptions="Start" VerticalOptions="Center" Margin="8"
+                            Clicked="OnOpenRightClicked"/>
                 </Grid>
             </Frame>
         </Grid>
-        <!-- 1) Optionen / Filter -->
-        <Frame Grid.Row="1" HasShadow="True" CornerRadius="6" Padding="8">
-            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="10" RowDefinitions="Auto,Auto" RowSpacing="6">
-                <Label Grid.Column="0" Text="Filter:" VerticalTextAlignment="Center" />
-                <Entry Grid.Column="1" Placeholder="Tag, Name oder Wert(e) suchen…" Text="{Binding FilterText, Mode=TwoWay}" />
-                <Label Grid.Column="2" Text="Nur Unterschiede" VerticalTextAlignment="Center" />
-                <Switch Grid.Column="3" IsToggled="{Binding ShowOnlyDifferences, Mode=TwoWay}" />
-                <Label Grid.Column="4" Text="Nur ungültige" VerticalTextAlignment="Center" />
-                <Switch Grid.Column="5" IsToggled="{Binding ShowOnlyInvalid, Mode=TwoWay}" />
-            </Grid>
-        </Frame>
 
-        <!-- 2) Haupt-Bereich -->
-        <Grid Grid.Row="2" ColumnDefinitions="2*,5*" ColumnSpacing="8" RowDefinitions="*">
+        <!-- 1) BOTTOM: „Pseudo Tabs“ -->
+        <Grid Grid.Row="1" RowSpacing="8">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
 
-            <!-- Tags (links) -->
-            <Frame Grid.Column="0" HasShadow="True" CornerRadius="6" Padding="0">
-                <Grid RowDefinitions="Auto,*">
-                    <Grid RowDefinitions="Auto" Padding="8" BackgroundColor="#2D2D2D">
-                        <Grid Grid.Row="1" Grid.ColumnSpan="7" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
-                            <Label Grid.Column="0" Text="Tag-Filter:" VerticalTextAlignment="Center" />
-                            <Entry Grid.Column="1" Placeholder="(0010,0010) PatientName …" Text="{Binding TagSearchText, Mode=TwoWay}" />
-                            <Button Grid.Column="2" Text="Tag-Filter löschen" Clicked="OnClearTagFilterClicked" />
+            <!-- Tab-Leiste -->
+            <HorizontalStackLayout Spacing="8" Padding="8,4">
+                <!-- Metadaten -->
+                <Frame x:Name="MetaTabFrame" Padding="0" HasShadow="False"
+                       BackgroundColor="#22000000" CornerRadius="8">
+                    <RadioButton x:Name="MetaTab" GroupName="BottomTabs" IsChecked="True"
+                                 Content="Metadaten" TextColor="White" Padding="12,6"
+                                 BackgroundColor="Transparent"/>
+                    <Frame.Triggers>
+                        <DataTrigger TargetType="Frame"
+                                     Binding="{Binding Source={x:Reference MetaTab}, Path=IsChecked}" Value="True">
+                            <Setter Property="BackgroundColor" Value="#AA000000"/>
+                        </DataTrigger>
+                    </Frame.Triggers>
+                </Frame>
+
+                <!-- Messungen -->
+                <Frame x:Name="MeasTabFrame" Padding="0" HasShadow="False"
+                       BackgroundColor="#22000000" CornerRadius="8">
+                    <RadioButton x:Name="MeasTab" GroupName="BottomTabs"
+                                 Content="Messungen" TextColor="White" Padding="12,6"
+                                 BackgroundColor="Transparent"/>
+                    <Frame.Triggers>
+                        <DataTrigger TargetType="Frame"
+                                     Binding="{Binding Source={x:Reference MeasTab}, Path=IsChecked}" Value="True">
+                            <Setter Property="BackgroundColor" Value="#AA000000"/>
+                        </DataTrigger>
+                    </Frame.Triggers>
+                </Frame>
+
+                <!-- Notizen -->
+                <Frame x:Name="NotesTabFrame" Padding="0" HasShadow="False"
+                       BackgroundColor="#22000000" CornerRadius="8">
+                    <RadioButton x:Name="NotesTab" GroupName="BottomTabs"
+                                 Content="Notizen" TextColor="White" Padding="12,6"
+                                 BackgroundColor="Transparent"/>
+                    <Frame.Triggers>
+                        <DataTrigger TargetType="Frame"
+                                     Binding="{Binding Source={x:Reference NotesTab}, Path=IsChecked}" Value="True">
+                            <Setter Property="BackgroundColor" Value="#AA000000"/>
+                        </DataTrigger>
+                    </Frame.Triggers>
+                </Frame>
+
+                <!-- Einstellungen -->
+                <Frame x:Name="SettingsTabFrame" Padding="0" HasShadow="False"
+                       BackgroundColor="#22000000" CornerRadius="8">
+                    <RadioButton x:Name="SettingsTab" GroupName="BottomTabs"
+                                 Content="Einstellungen" TextColor="White" Padding="12,6"
+                                 BackgroundColor="Transparent"/>
+                    <Frame.Triggers>
+                        <DataTrigger TargetType="Frame"
+                                     Binding="{Binding Source={x:Reference SettingsTab}, Path=IsChecked}" Value="True">
+                            <Setter Property="BackgroundColor" Value="#AA000000"/>
+                        </DataTrigger>
+                    </Frame.Triggers>
+                </Frame>
+            </HorizontalStackLayout>
+
+            <!-- Tab-Content -->
+            <Grid Grid.Row="1">
+                <!-- Tab 1: Metadaten -->
+                <Grid IsVisible="{Binding Source={x:Reference MetaTab}, Path=IsChecked}"
+                      RowSpacing="8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- (A) Allgemeiner Filter -->
+                    <Frame Grid.Row="0" HasShadow="True" CornerRadius="6" Padding="8">
+                        <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto" ColumnSpacing="10">
+                            <Label Grid.Column="0" Text="Filter:" VerticalTextAlignment="Center"/>
+                            <Entry Grid.Column="1" Placeholder="Tag, Name oder Wert(e) suchen…"
+                                   Text="{Binding FilterText, Mode=TwoWay}"/>
+                            <Label Grid.Column="2" Text="Nur Unterschiede" VerticalTextAlignment="Center"/>
+                            <Switch Grid.Column="3" IsToggled="{Binding ShowOnlyDifferences, Mode=TwoWay}"/>
+                            <Label Grid.Column="4" Text="Nur ungültige" VerticalTextAlignment="Center"/>
+                            <Switch Grid.Column="5" IsToggled="{Binding ShowOnlyInvalid, Mode=TwoWay}"/>
+                        </Grid>
+                    </Frame>
+
+                    <!-- (B) Tagliste links + Vergleich rechts -->
+                    <Grid Grid.Row="1" ColumnDefinitions="2*,5*" ColumnSpacing="8">
+
+                        <!-- Links: Tags -->
+                        <Frame Grid.Column="0" HasShadow="True" CornerRadius="6" Padding="0">
+                            <Grid RowDefinitions="Auto,*">
+                                <Grid Padding="8" BackgroundColor="#2D2D2D">
+                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                                        <Label Grid.Column="0" Text="Tag-Filter:" VerticalTextAlignment="Center"/>
+                                        <Entry Grid.Column="1" Placeholder="(0010,0010) PatientName …"
+                                               Text="{Binding TagSearchText, Mode=TwoWay}"/>
+                                        <Button Grid.Column="2" Text="Tag-Filter löschen"
+                                                Style="{StaticResource ChipGhostButton}"
+                                                Clicked="OnClearTagFilterClicked"/>
+                                    </Grid>
+                                </Grid>
+
+                                <CollectionView Grid.Row="1"
+                                                ItemsSource="{Binding FilteredTagFilters}"
+                                                SelectionMode="Single"
+                                                SelectionChanged="OnTagFilterSelectionChanged">
+                                    <CollectionView.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Padding="8" ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                                                <Label Text="{Binding TagId}" FontAttributes="Bold"/>
+                                                <Label Grid.Column="1" Text="{Binding Name}"/>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </CollectionView.ItemTemplate>
+                                </CollectionView>
+                            </Grid>
+                        </Frame>
+
+                        <!-- Rechts: Vergleich -->
+                        <Frame Grid.Column="1" HasShadow="True" CornerRadius="6" Padding="0">
+                            <Grid RowDefinitions="Auto,*" ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="{Binding TagWidth,  Converter={StaticResource StarConverter}}"/>
+                                    <ColumnDefinition Width="{Binding NameWidth, Converter={StaticResource StarConverter}}"/>
+                                    <ColumnDefinition Width="{Binding LeftWidth, Converter={StaticResource StarConverter}}"/>
+                                    <ColumnDefinition Width="{Binding RightWidth,Converter={StaticResource StarConverter}}"/>
+                                </Grid.ColumnDefinitions>
+
+                                <!-- Header -->
+                                <Button Grid.Row="0" Grid.Column="0" Text="{Binding TagHeaderText}"
+                                        Style="{StaticResource ChipGhostButton}"
+                                        Clicked="OnSortClicked" CommandParameter="TagId"/>
+                                <Button Grid.Row="0" Grid.Column="1" Text="{Binding NameHeaderText}"
+                                        Style="{StaticResource ChipGhostButton}"
+                                        Clicked="OnSortClicked" CommandParameter="Name"/>
+                                <Button Grid.Row="0" Grid.Column="2" Text="{Binding LeftHeaderText}"
+                                        Style="{StaticResource ChipGhostButton}"
+                                        Clicked="OnSortClicked" CommandParameter="LeftValue"/>
+                                <Button Grid.Row="0" Grid.Column="3" Text="{Binding RightHeaderText}"
+                                        Style="{StaticResource ChipGhostButton}"
+                                        Clicked="OnSortClicked" CommandParameter="RightValue"/>
+
+                                <!-- Daten -->
+                                <CollectionView Grid.Row="1" Grid.ColumnSpan="4"
+                                                ItemsSource="{Binding FilteredItems}"
+                                                SelectionMode="Single"
+                                                SelectionChanged="OnCombinedSelectionChanged">
+                                    <CollectionView.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Padding="4" BackgroundColor="{Binding IsAlternate, Converter={StaticResource AltBgConverter}}">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="{Binding BindingContext.TagWidth,  Source={x:Reference This}, Converter={StaticResource StarConverter}}"/>
+                                                    <ColumnDefinition Width="{Binding BindingContext.NameWidth, Source={x:Reference This}, Converter={StaticResource StarConverter}}"/>
+                                                    <ColumnDefinition Width="{Binding BindingContext.LeftWidth, Source={x:Reference This}, Converter={StaticResource StarConverter}}"/>
+                                                    <ColumnDefinition Width="{Binding BindingContext.RightWidth,Source={x:Reference This}, Converter={StaticResource StarConverter}}"/>
+                                                </Grid.ColumnDefinitions>
+
+                                                <Label Grid.Column="0" Text="{Binding TagId}" VerticalTextAlignment="Center" FontAttributes="Bold" Margin="4,0"/>
+                                                <Label Grid.Column="1" Text="{Binding Name}" VerticalTextAlignment="Center" LineBreakMode="TailTruncation" Margin="4,0"/>
+
+                                                <Entry x:Name="LeftValueEntry" Grid.Column="2" Margin="2,0"
+                                                       Text="{Binding LeftText, Mode=TwoWay,
+                                                             Converter={StaticResource OnlyWhenFocusedConverter},
+                                                             ConverterParameter={Binding Source={x:Reference LeftValueEntry}, Path=IsFocused}}"/>
+
+                                                <Entry x:Name="RightValueEntry" Grid.Column="3" Margin="2,0"
+                                                       Text="{Binding RightText, Mode=TwoWay,
+                                                             Converter={StaticResource OnlyWhenFocusedConverter},
+                                                             ConverterParameter={Binding Source={x:Reference RightValueEntry}, Path=IsFocused}}"/>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </CollectionView.ItemTemplate>
+                                </CollectionView>
+
+                                <!-- Floating-Buttons (bewusst Fab) -->
+                                <Button Grid.Row="0" Grid.RowSpan="2" Grid.Column="2" ZIndex="10"
+                                        Style="{StaticResource FabSmall}" Text="+" Margin="0,0,02,0"
+                                        HorizontalOptions="End" VerticalOptions="Start"
+                                        AutomationProperties.Name="Tag zu LINKS hinzufügen"
+                                        Clicked="OnAddTagLeftOverlayClicked"/>
+                                <Button Grid.Row="0" Grid.RowSpan="2" Grid.Column="2" ZIndex="10"
+                                        Style="{StaticResource FabSmall}" Text="💾" Margin="0,0,50,0"
+                                        HorizontalOptions="End" VerticalOptions="Start"
+                                        AutomationProperties.Name="LINKS speichern"
+                                        Clicked="OnSaveLeftClicked"/>
+
+                                <Button Grid.Row="0" Grid.RowSpan="2" Grid.Column="3" ZIndex="10"
+                                        Style="{StaticResource FabSmall}" Text="+" Margin="0,0,02,0"
+                                        HorizontalOptions="End" VerticalOptions="Start"
+                                        AutomationProperties.Name="Tag zu RECHTS hinzufügen"
+                                        Clicked="OnAddTagRightOverlayClicked"/>
+                                <Button Grid.Row="0" Grid.RowSpan="2" Grid.Column="3" ZIndex="10"
+                                        Style="{StaticResource FabSmall}" Text="💾" Margin="0,0,50,0"
+                                        HorizontalOptions="End" VerticalOptions="Start"
+                                        AutomationProperties.Name="RECHTS speichern"
+                                        Clicked="OnSaveRightClicked"/>
+                            </Grid>
+                        </Frame>
+                    </Grid>
+                </Grid>
+
+                <!-- Tab 2: Dummy -->
+                <Grid IsVisible="{Binding Source={x:Reference MeasTab}, Path=IsChecked}" Padding="12">
+                    <Label Text="Messungen (kommt später)" TextColor="White" FontSize="16"/>
+                </Grid>
+
+                <Grid IsVisible="{Binding Source={x:Reference NotesTab}, Path=IsChecked}" Padding="12">
+                    <Label Text="Messungen (kommt später)" TextColor="White" FontSize="16"/>
+                </Grid>
+
+                <!-- Tab 3: Einstellungen -->
+                <Grid IsVisible="{Binding Source={x:Reference SettingsTab}, Path=IsChecked}" Padding="6">
+                    <Grid ColumnDefinitions="2*,3*" ColumnSpacing="8" RowSpacing="8" Padding="0">
+
+                        <!-- LINKS: Lokaler DICOM-Knoten -->
+                        <Frame Grid.Column="0" HasShadow="True" CornerRadius="6" Padding="12">
+                            <Grid RowSpacing="10" ColumnSpacing="12"
+                                  ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+                                <Label Grid.Row="0" Grid.ColumnSpan="2" Text="Lokaler DICOM-Knoten"
+                                       FontAttributes="Bold" TextColor="White" />
+
+                                <Label Grid.Row="1" Grid.Column="0" Text="AE Title" VerticalTextAlignment="Center"/>
+                                <Entry  Grid.Row="1" Grid.Column="1" Text="{Binding LocalAeTitle, Mode=TwoWay}"
+                                        Placeholder="z.B. DVIEWER" />
+
+                                <Label Grid.Row="2" Grid.Column="0" Text="Port" VerticalTextAlignment="Center"/>
+                                <Entry  Grid.Row="2" Grid.Column="1" Text="{Binding LocalPort, Mode=TwoWay}"
+                                        Keyboard="Numeric" Placeholder="104" />
+
+                                <Label Grid.Row="3" Grid.Column="0" Text="Speicherpfad" VerticalTextAlignment="Center"/>
+                                <Grid  Grid.Row="3" Grid.Column="1" ColumnDefinitions="*,Auto">
+                                    <Entry Text="{Binding LocalStorageFolder, Mode=TwoWay}" Placeholder="/data/dicom" />
+                                    <Button Grid.Column="1" Text="…"
+                                            Style="{StaticResource ChipIconButton}"
+                                            Margin="6,0,0,0"
+                                            Clicked="OnBrowseStorageClicked"/>
+                                </Grid>
+
+                                <Label Grid.Row="4" Grid.Column="0" Text="Max. PDU (Bytes)" VerticalTextAlignment="Center"/>
+                                <Entry  Grid.Row="4" Grid.Column="1" Text="{Binding LocalMaxPdu, Mode=TwoWay}"
+                                        Keyboard="Numeric" Placeholder="16384" />
+
+                                <Label Grid.Row="5" Grid.Column="0" Text="Incoming C-STORE SCP" VerticalTextAlignment="Center"/>
+                                <Switch Grid.Row="5" Grid.Column="1" IsToggled="{Binding LocalAcceptIncoming, Mode=TwoWay}" />
+
+                                <Label Grid.Row="6" Grid.Column="0" Text="TLS aktiv" VerticalTextAlignment="Center"/>
+                                <Switch Grid.Row="6" Grid.Column="1" IsToggled="{Binding LocalUseTls, Mode=TwoWay}" />
+
+                                <Grid Grid.Row="7" Grid.ColumnSpan="2" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                                    <Label Grid.Column="0"/>
+                                    <Button Grid.Column="1" Text="Test SCP"
+                                            Style="{StaticResource ChipButton}"
+                                            Clicked="OnTestLocalDicomClicked"/>
+                                    <Button Grid.Column="2" Text="Speichern"
+                                            Style="{StaticResource ChipGhostButton}"
+                                            Clicked="OnSaveLocalDicomClicked"/>
+                                </Grid>
+                            </Grid>
+                        </Frame>
+
+                        <!-- RECHTS: Ziel-Listen -->
+                        <Grid Grid.Column="1" RowDefinitions="*,*,*" RowSpacing="8">
+
+                            <!-- SEND-DESTINATIONS -->
+                            <Frame Grid.Row="0" HasShadow="True" CornerRadius="6" Padding="0">
+                                <Grid RowDefinitions="Auto,*" RowSpacing="0">
+                                    <Grid Grid.Row="0" Padding="4" BackgroundColor="#2D2D2D"
+                                          ColumnDefinitions="*,Auto,Auto,Auto,Auto" ColumnSpacing="6">
+                                        <Label Grid.Column="0" Text="DICOM Send – Ziele" FontAttributes="Bold" TextColor="White"/>
+                                        <Button Grid.Column="1" Text="Neu"
+                                                Style="{StaticResource ChipButton}"
+                                                Clicked="OnAddSendNodeClicked"/>
+                                        <Button Grid.Column="2" Text="Bearb."
+                                                Style="{StaticResource ChipGhostButton}"
+                                                IsEnabled="{Binding SelectedSendNode, Converter={StaticResource NullableDateConverter}}"
+                                                Clicked="OnEditSendNodeClicked"/>
+                                        <Button Grid.Column="3" Text="Löschen"
+                                                Style="{StaticResource ChipDangerButton}"
+                                                IsEnabled="{Binding SelectedSendNode, Converter={StaticResource NullableDateConverter}}"
+                                                Clicked="OnRemoveSendNodeClicked"/>
+                                        <Button Grid.Column="4" Text="Test"
+                                                Style="{StaticResource ChipGhostButton}"
+                                                IsEnabled="{Binding SelectedSendNode, Converter={StaticResource NullableDateConverter}}"
+                                                Clicked="OnTestSendNodeClicked"/>
+                                    </Grid>
+
+                                    <CollectionView Grid.Row="1"
+                                                    ItemsSource="{Binding SendNodes}"
+                                                    SelectionMode="Single"
+                                                    SelectedItem="{Binding SelectedSendNode, Mode=TwoWay}">
+                                        <CollectionView.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Padding="8" ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="10">
+                                                    <Label Text="{Binding AeTitle}" FontAttributes="Bold"/>
+                                                    <Label Grid.Column="1" Text="{Binding Host}" />
+                                                    <Label Grid.Column="2" Text="{Binding Port}" />
+                                                    <Label Grid.Column="3" Text="{Binding CalledAe}" />
+                                                    <Label Grid.Column="4" Text="🔒" IsVisible="{Binding UseTls}" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </CollectionView.ItemTemplate>
+                                    </CollectionView>
+                                </Grid>
+                            </Frame>
+
+                            <!-- WORKLIST -->
+                            <Frame Grid.Row="1" HasShadow="True" CornerRadius="6" Padding="0">
+                                <Grid RowDefinitions="Auto,*" RowSpacing="0">
+                                    <Grid Grid.Row="0" Padding="4" BackgroundColor="#2D2D2D"
+                                          ColumnDefinitions="*,Auto,Auto,Auto,Auto" ColumnSpacing="6">
+                                        <Label Grid.Column="0" Text="DICOM Modality Worklist – Server" FontAttributes="Bold" TextColor="White"/>
+                                        <Button Grid.Column="1" Text="Neu"
+                                                Style="{StaticResource ChipButton}"
+                                                Clicked="OnAddMwNodeClicked"/>
+                                        <Button Grid.Column="2" Text="Bearb."
+                                                Style="{StaticResource ChipGhostButton}"
+                                                IsEnabled="{Binding SelectedMwNode, Converter={StaticResource NullableDateConverter}}"
+                                                Clicked="OnEditMwNodeClicked"/>
+                                        <Button Grid.Column="3" Text="Löschen"
+                                                Style="{StaticResource ChipDangerButton}"
+                                                IsEnabled="{Binding SelectedMwNode, Converter={StaticResource NullableDateConverter}}"
+                                                Clicked="OnRemoveMwNodeClicked"/>
+                                        <Button Grid.Column="4" Text="Test"
+                                                Style="{StaticResource ChipGhostButton}"
+                                                IsEnabled="{Binding SelectedMwNode, Converter={StaticResource NullableDateConverter}}"
+                                                Clicked="OnTestMwNodeClicked"/>
+                                    </Grid>
+
+                                    <CollectionView Grid.Row="1"
+                                                    ItemsSource="{Binding WorklistNodes}"
+                                                    SelectionMode="Single"
+                                                    SelectedItem="{Binding SelectedMwNode, Mode=TwoWay}">
+                                        <CollectionView.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Padding="8" ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="10">
+                                                    <Label Text="{Binding AeTitle}" FontAttributes="Bold"/>
+                                                    <Label Grid.Column="1" Text="{Binding Host}" />
+                                                    <Label Grid.Column="2" Text="{Binding Port}" />
+                                                    <Label Grid.Column="3" Text="{Binding CalledAe}" />
+                                                    <Label Grid.Column="4" Text="🔒" IsVisible="{Binding UseTls}" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </CollectionView.ItemTemplate>
+                                    </CollectionView>
+                                </Grid>
+                            </Frame>
+
+                            <!-- QUERY/RETRIEVE -->
+                            <Frame Grid.Row="2" HasShadow="True" CornerRadius="6" Padding="0">
+                                <Grid RowDefinitions="Auto,*" RowSpacing="0">
+                                    <Grid Grid.Row="0" Padding="4" BackgroundColor="#2D2D2D"
+                                          ColumnDefinitions="*,Auto,Auto,Auto,Auto" ColumnSpacing="6">
+                                        <Label Grid.Column="0" Text="DICOM Query/Retrieve – Server" FontAttributes="Bold" TextColor="White"/>
+                                        <Button Grid.Column="1" Text="Neu"
+                                                Style="{StaticResource ChipButton}"
+                                                Clicked="OnAddQrNodeClicked"/>
+                                        <Button Grid.Column="2" Text="Bearb."
+                                                Style="{StaticResource ChipGhostButton}"
+                                                IsEnabled="{Binding SelectedQrNode, Converter={StaticResource NullableDateConverter}}"
+                                                Clicked="OnEditQrNodeClicked"/>
+                                        <Button Grid.Column="3" Text="Löschen"
+                                                Style="{StaticResource ChipDangerButton}"
+                                                IsEnabled="{Binding SelectedQrNode, Converter={StaticResource NullableDateConverter}}"
+                                                Clicked="OnRemoveQrNodeClicked"/>
+                                        <Button Grid.Column="4" Text="Test"
+                                                Style="{StaticResource ChipGhostButton}"
+                                                IsEnabled="{Binding SelectedQrNode, Converter={StaticResource NullableDateConverter}}"
+                                                Clicked="OnTestQrNodeClicked"/>
+                                    </Grid>
+
+                                    <CollectionView Grid.Row="1"
+                                                    ItemsSource="{Binding QueryRetrieveNodes}"
+                                                    SelectionMode="Single"
+                                                    SelectedItem="{Binding SelectedQrNode, Mode=TwoWay}">
+                                        <CollectionView.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Padding="8" ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="10">
+                                                    <Label Text="{Binding AeTitle}" FontAttributes="Bold"/>
+                                                    <Label Grid.Column="1" Text="{Binding Host}" />
+                                                    <Label Grid.Column="2" Text="{Binding Port}" />
+                                                    <Label Grid.Column="3" Text="{Binding CalledAe}" />
+                                                    <Label Grid.Column="4" Text="🔒" IsVisible="{Binding UseTls}" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </CollectionView.ItemTemplate>
+                                    </CollectionView>
+                                </Grid>
+                            </Frame>
                         </Grid>
                     </Grid>
-
-                    <CollectionView Grid.Row="1"
-                                    ItemsSource="{Binding FilteredTagFilters}"
-                                    SelectionMode="Single"
-                                    SelectionChanged="OnTagFilterSelectionChanged">
-                        <CollectionView.ItemTemplate>
-                            <DataTemplate>
-                                <Grid Padding="8" ColumnDefinitions="Auto,*" ColumnSpacing="8">
-                                    <Label Text="{Binding TagId}" FontAttributes="Bold" />
-                                    <Label Grid.Column="1" Text="{Binding Name}" />
-                                </Grid>
-                            </DataTemplate>
-                        </CollectionView.ItemTemplate>
-                    </CollectionView>
                 </Grid>
-            </Frame>
-
-            <!-- Vergleich (rechts) -->
-            <Frame Grid.Column="1" HasShadow="True" CornerRadius="6" Padding="0">
-                <Grid RowDefinitions="Auto,*" ColumnSpacing="8">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="{Binding TagWidth,  Converter={StaticResource StarConverter}}"/>
-                        <ColumnDefinition Width="{Binding NameWidth, Converter={StaticResource StarConverter}}"/>
-                        <ColumnDefinition Width="{Binding LeftWidth, Converter={StaticResource StarConverter}}"/>
-                        <ColumnDefinition Width="{Binding RightWidth,Converter={StaticResource StarConverter}}"/>
-                    </Grid.ColumnDefinitions>
-
-                    <Button Grid.Row="0" Grid.Column="0" Text="{Binding TagHeaderText}"
-                            Clicked="OnSortClicked" CommandParameter="TagId" TextColor="White" />
-                    <Button Grid.Row="0" Grid.Column="1" Text="{Binding NameHeaderText}"
-                            Clicked="OnSortClicked" CommandParameter="Name" TextColor="White" />
-                    <Button Grid.Row="0" Grid.Column="2" Text="{Binding LeftHeaderText}"
-                            Clicked="OnSortClicked" CommandParameter="LeftValue" TextColor="White" />
-                    <Button Grid.Row="0" Grid.Column="3" Text="{Binding RightHeaderText}"
-                            Clicked="OnSortClicked" CommandParameter="RightValue" TextColor="White" />
-
-                    <CollectionView Grid.Row="1" Grid.ColumnSpan="4"
-                                    ItemsSource="{Binding FilteredItems}"
-                                    SelectionMode="Single"
-                                    SelectionChanged="OnCombinedSelectionChanged">
-                        <CollectionView.ItemTemplate>
-                            <DataTemplate>
-                                <Grid Padding="4" BackgroundColor="{Binding IsAlternate, Converter={StaticResource AltBgConverter}}">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="{Binding BindingContext.TagWidth,  Source={x:Reference This}, Converter={StaticResource StarConverter}}"/>
-                                        <ColumnDefinition Width="{Binding BindingContext.NameWidth, Source={x:Reference This}, Converter={StaticResource StarConverter}}"/>
-                                        <ColumnDefinition Width="{Binding BindingContext.LeftWidth, Source={x:Reference This}, Converter={StaticResource StarConverter}}"/>
-                                        <ColumnDefinition Width="{Binding BindingContext.RightWidth,Source={x:Reference This}, Converter={StaticResource StarConverter}}"/>
-                                    </Grid.ColumnDefinitions>
-
-                                    <Label Grid.Column="0" Text="{Binding TagId}" VerticalTextAlignment="Center" FontAttributes="Bold" Margin="4,0"/>
-                                    <Label Grid.Column="1" Text="{Binding Name}" VerticalTextAlignment="Center" LineBreakMode="TailTruncation" Margin="4,0"/>
-
-                                    <Entry x:Name="LeftValueEntry" Grid.Column="2" Margin="2,0"
-                                           Text="{Binding LeftText, Mode=TwoWay,
-                                                  Converter={StaticResource OnlyWhenFocusedConverter},
-                                                  ConverterParameter={Binding Source={x:Reference LeftValueEntry}, Path=IsFocused}}"/>
-
-                                    <Entry x:Name="RightValueEntry" Grid.Column="3" Margin="2,0"
-                                           Text="{Binding RightText, Mode=TwoWay,
-                                                  Converter={StaticResource OnlyWhenFocusedConverter},
-                                                  ConverterParameter={Binding Source={x:Reference RightValueEntry}, Path=IsFocused}}"/>
-                                </Grid>
-                            </DataTemplate>
-                        </CollectionView.ItemTemplate>
-                    </CollectionView>
-
-                    <!-- OVERLAYS -->
-                    <Button Grid.Row="0" Grid.RowSpan="2" Grid.Column="2" ZIndex="10"
-                            Style="{StaticResource FabSmall}" Text="+" Margin="0,0,02,0"
-                            HorizontalOptions="End" VerticalOptions="Start"
-                            AutomationProperties.Name="Tag zu LINKS hinzufügen"
-                            Clicked="OnAddTagLeftOverlayClicked"/>
-                    <Button Grid.Row="0" Grid.RowSpan="2" Grid.Column="2" ZIndex="10"
-                            Style="{StaticResource FabSmall}" Text="💾" Margin="0,0,50,0"
-                            HorizontalOptions="End" VerticalOptions="Start"
-                            AutomationProperties.Name="LINKS speichern"
-                            Clicked="OnSaveLeftClicked"/>
-
-                    <Button Grid.Row="0" Grid.RowSpan="2" Grid.Column="3" ZIndex="10"
-                            Style="{StaticResource FabSmall}" Text="+" Margin="0,0,02,0"
-                            HorizontalOptions="End" VerticalOptions="Start"
-                            AutomationProperties.Name="Tag zu RECHTS hinzufügen"
-                            Clicked="OnAddTagRightOverlayClicked"/>
-                    <Button Grid.Row="0" Grid.RowSpan="2" Grid.Column="3" ZIndex="10"
-                            Style="{StaticResource FabSmall}" Text="💾" Margin="0,0,50,0"
-                            HorizontalOptions="End" VerticalOptions="Start"
-                            AutomationProperties.Name="RECHTS speichern"
-                            Clicked="OnSaveRightClicked"/>
-                </Grid>
-            </Frame>
+            </Grid>
         </Grid>
 
         <!-- Vollbild Overlay: Links -->
-        <Grid Grid.RowSpan="3"
+        <Grid Grid.RowSpan="2"
               IsVisible="{Binding Source={x:Reference This}, Path=LeftFullscreenVisible}"
               BackgroundColor="#CC000000">
             <Grid.RowDefinitions>
@@ -231,7 +635,10 @@
             </Grid.RowDefinitions>
 
             <Grid Grid.Row="0" Padding="8" BackgroundColor="#1A1A1A">
-                <Button Text="✕ Schließen" HorizontalOptions="End" Clicked="OnCloseLeftFullscreen"/>
+                <Button Text="✕ Schließen"
+                        Style="{StaticResource ChipGhostButton}"
+                        HorizontalOptions="End"
+                        Clicked="OnCloseLeftFullscreen"/>
             </Grid>
 
             <controls:DicomViewerView x:Name="LeftViewerFull"
@@ -253,7 +660,7 @@
         </Grid>
 
         <!-- Vollbild Overlay: Rechts -->
-        <Grid Grid.RowSpan="3"
+        <Grid Grid.RowSpan="2"
               IsVisible="{Binding Source={x:Reference This}, Path=RightFullscreenVisible}"
               BackgroundColor="#CC000000">
             <Grid.RowDefinitions>
@@ -262,7 +669,10 @@
             </Grid.RowDefinitions>
 
             <Grid Grid.Row="0" Padding="8" BackgroundColor="#1A1A1A">
-                <Button Text="✕ Schließen" HorizontalOptions="End" Clicked="OnCloseRightFullscreen"/>
+                <Button Text="✕ Schließen"
+                        Style="{StaticResource ChipGhostButton}"
+                        HorizontalOptions="End"
+                        Clicked="OnCloseRightFullscreen"/>
             </Grid>
 
             <controls:DicomViewerView x:Name="RightViewerFull"

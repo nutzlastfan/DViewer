@@ -220,11 +220,17 @@
                   InputTransparent="False"
                   TranslationY="-28">
                 <Grid.ColumnDefinitions>
+                    <!-- Cursor | spacer | Measure | spacer | Circle | spacer | Rect -->
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="8"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="8"/>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="8"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
+                <!-- Cursor -->
                 <Frame x:Name="CursorToolFrame"
                        Grid.Column="0"
                        CornerRadius="8"
@@ -239,6 +245,7 @@
                             Clicked="OnCursorToolClicked"/>
                 </Frame>
 
+                <!-- Measure -->
                 <Frame x:Name="MeasureToolFrame"
                        Grid.Column="2"
                        CornerRadius="8"
@@ -251,6 +258,36 @@
                             BackgroundColor="#22000000"
                             TextColor="White"
                             Clicked="OnMeasureToolClicked"/>
+                </Frame>
+
+                <!-- Circle -->
+                <Frame x:Name="CircleToolFrame"
+                       Grid.Column="4"
+                       CornerRadius="8"
+                       Padding="6"
+                       HasShadow="False"
+                       BackgroundColor="#22000000">
+                    <Button x:Name="CircleBtn"
+                            Text="◯"
+                            FontSize="16"
+                            BackgroundColor="#22000000"
+                            TextColor="White"
+                            Clicked="OnCircleToolClicked" />
+                </Frame>
+
+                <!-- Rectangle -->
+                <Frame x:Name="RectToolFrame"
+                       Grid.Column="6"
+                       CornerRadius="8"
+                       Padding="6"
+                       HasShadow="False"
+                       BackgroundColor="#22000000">
+                    <Button x:Name="RectBtn"
+                            Text="▭"
+                            FontSize="16"
+                            BackgroundColor="#22000000"
+                            TextColor="White"
+                            Clicked="OnRectToolClicked" />
                 </Frame>
             </Grid>
 

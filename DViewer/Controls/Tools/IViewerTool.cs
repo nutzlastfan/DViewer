@@ -1,25 +1,23 @@
-﻿using Microsoft.Maui.Graphics;
-using Microsoft.Maui.Controls;
+﻿using Microsoft.Maui.Controls;
+using Microsoft.Maui.Graphics;
 
 namespace DViewer.Controls.Tools
 {
     public interface IViewerTool
     {
-        // Wird beim Aktivieren/Deaktivieren des Tools gerufen
-        void OnActivated(DicomViewerView viewer);
-        void OnDeactivated(DicomViewerView viewer);
+        bool IsInteracting { get; } // TRUE während Drag/Resize → WL/WW/Pan/Zoom blocken
 
-        // Pointer (plattf.-unabhängig, Screen-Koordinaten relativ zum Root/Container)
-        void OnPointerPressed(DicomViewerView viewer, Point pos, bool left, bool right, bool middle);
-        void OnPointerMoved(DicomViewerView viewer, Point pos);
-        void OnPointerReleased(DicomViewerView viewer, Point pos);
+        void OnActivated(DViewer.Controls.DicomViewerView v);
+        void OnDeactivated(DViewer.Controls.DicomViewerView v);
 
-        // Touch/Trackpad (non-Windows)
-        void OnPinch(DicomViewerView viewer, PinchGestureUpdatedEventArgs e);
-        void OnPan(DicomViewerView viewer, PanUpdatedEventArgs e);
-        void OnTwoFingerPan(DicomViewerView viewer, PanUpdatedEventArgs e);
+        void Draw(ICanvas canvas, RectF dirtyRect, DViewer.Controls.DicomViewerView v);
 
-        // Overlay-Rendering (z.B. Mess-Linie)
-        void Draw(ICanvas canvas, RectF dirtyRect, DicomViewerView viewer);
+        void OnPointerPressed (DViewer.Controls.DicomViewerView v, Point pt, bool left, bool right, bool middle);
+        void OnPointerMoved   (DViewer.Controls.DicomViewerView v, Point pt);
+        void OnPointerReleased(DViewer.Controls.DicomViewerView v, Point pt);
+
+        void OnPinch        (DViewer.Controls.DicomViewerView v, PinchGestureUpdatedEventArgs e);
+        void OnPan          (DViewer.Controls.DicomViewerView v, PanUpdatedEventArgs e);
+        void OnTwoFingerPan (DViewer.Controls.DicomViewerView v, PanUpdatedEventArgs e);
     }
 }

@@ -21,6 +21,8 @@ namespace DViewer.Controls.Tools
         const float HANDLE_R = 4f;     // px (Screen)
         const float LINE_W = 2f;
 
+        public bool IsInteracting { get; private set; }
+
 
         // Gesten derzeit nicht benötigt → No-Op
         public void OnPinch(DViewer.Controls.DicomViewerView v, PinchGestureUpdatedEventArgs e) { }
@@ -45,8 +47,22 @@ namespace DViewer.Controls.Tools
             if (!v.TryScreenToImage(p, out var imgPt)) return;
 
             _dragging = true;
+            IsInteracting = true;                 // <—
             _startScreen = _currScreen = p;
             _startImg = _currImg = imgPt;
+            v.InvalidateToolOverlay();
+        }
+
+        public void OnPointerReleased(DicomViewerView v, Point p)
+        {
+            if (!_dragging) return;
+            _dragging = false;
+            IsInteracting = false;                // <—
+
+            var shape = new MeasureShape(_startImg, _currImg);
+            v.AddMeasureForCurrent(shape);
+
+            v.CurrentTool = DViewer.Controls.DicomViewerView.ViewerTool.Cursor;
             v.InvalidateToolOverlay();
         }
 
@@ -60,38 +76,26 @@ namespace DViewer.Controls.Tools
             v.InvalidateToolOverlay();
         }
 
-        public void OnPointerReleased(DicomViewerView v, Point p)
-        {
-            if (!_dragging) return;
-            _dragging = false;
-
-            // finalisieren & speichern
-            var shape = new MeasureShape(_startImg, _currImg);
-            v.AddMeasureForCurrent(shape);
-
-            // Cursor-Tool aktivieren
-            v.CurrentTool = DicomViewerView.ViewerTool.Cursor;
-            v.InvalidateToolOverlay();
-        }
 
         public void Draw(ICanvas canvas, RectF dirty, DicomViewerView v)
         {
-            // Immer alle gespeicherten Messungen zeichnen (damit auch im Measure-Tool sichtbar)
-            CursorTool.DrawAllMeasures(canvas, v, hotShape: null, hotHandle: -1);
+            // Bestehende Shapes inkl. Labels
+            CursorTool.DrawAllOverlays(canvas, v); // hotShape/Handle leer lassen
 
             // Live-Linie beim Ziehen
             if (!_dragging) return;
 
-            // Screenpunkte für Start/Ende berechnen
+            // Screenpunkte berechnen
             if (!v.TryImageToScreen(_startImg, out var s1)) s1 = _startScreen;
             if (!v.TryImageToScreen(_currImg, out var s2)) s2 = _currScreen;
 
             DrawMeasure(canvas, v, s1, s2, isHot: true);
+
             // Live-Text
             var (mmOk, lenMm, lenPx) = v.MeasureLength(_startImg, _currImg);
             var mid = new Point((s1.X + s2.X) / 2, (s1.Y + s2.Y) / 2);
             var text = mmOk ? $"{lenMm:0.0} mm" : $"{lenPx:0} px";
-            DrawLabel(canvas, text, mid);
+            CursorTool.DrawLabel(canvas, text, new Point(mid.X - 20, mid.Y - 22));
         }
 
         // --- helpers ---

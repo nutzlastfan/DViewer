@@ -1,4 +1,4 @@
-﻿// === DicomViewerView.cs (zusammengeführt) ===
+﻿// === DicomViewerView.cs (zusammengeführt, mit Auto-Invalidation Variante 5) ===
 using System;
 using System.ComponentModel;
 using System.Globalization;
@@ -9,8 +9,7 @@ using Microsoft.Maui.Graphics;
 using CommunityToolkit.Maui.Views;
 using DViewer.Controls.Tools;
 using DViewer.Controls.Overlays;
-using System.Reflection;
-using System.Runtime.ConstrainedExecution;
+using System.Linq;
 
 #if WINDOWS
 using Microsoft.UI.Xaml;
@@ -29,6 +28,13 @@ namespace DViewer.Controls
             if (ToolOverlay != null)
                 ToolOverlay.Drawable = new ToolOverlayDrawable(this);
 
+            // === Variante 5: Auto-Invalidation der Overlays bei Scale/Translation-Änderungen ===
+            // (platform-unabhängig)
+            if (Img is View imgView)
+            {
+                imgView.PropertyChanged += Img_PropertyChanged;
+            }
+
             // Toolbar initial peeking
             TopToolbar.SizeChanged += (_, __) => InitToolbarPeek();
 
@@ -37,12 +43,35 @@ namespace DViewer.Controls
 
             UpdateToolButtons();
 
-            DViewer.Controls.Overlays.MeasureStore.Shared.Changed += OnMeasureStoreChanged;
-
+            ShapeStore.Shared.Changed += OnShapeStoreChanged;
         }
 
         // ======== Tool-Auswahl (Cursor / Measure) ========
-        public enum ViewerTool { Cursor, Measure }
+        public enum ViewerTool { Cursor, Measure, Circle, Rectangle }
+
+        bool ToolBlocksInput => _currentToolRef?.IsInteracting == true;
+
+        // Felder
+        readonly CursorTool _cursorTool = new();
+        readonly MeasureTool _measureTool = new();
+        readonly CircleTool _circleTool = new();
+        readonly RectTool _rectTool = new();
+
+        // Switch
+        void OnToolChanged()
+        {
+            _currentToolRef?.OnDeactivated(this);
+            _currentToolRef = CurrentTool switch
+            {
+                ViewerTool.Measure => _measureTool,
+                ViewerTool.Circle => _circleTool,
+                ViewerTool.Rectangle => _rectTool,
+                _ => _cursorTool
+            };
+            _currentToolRef.OnActivated(this);
+            UpdateToolButtons();
+            InvalidateToolOverlay();
+        }
 
         public static readonly BindableProperty CurrentToolProperty =
             BindableProperty.Create(
@@ -59,20 +88,36 @@ namespace DViewer.Controls
         }
 
         IViewerTool? _currentToolRef;
-        readonly CursorTool _cursorTool = new();
-        readonly MeasureTool _measureTool = new();
 
-        void OnToolChanged()
+        // Generisch:
+        public IReadOnlyList<object> GetShapesForCurrent()
+            => ShapeStore.Shared.Snapshot(CurrentImageKey);
+
+        // Filter:
+        public IReadOnlyList<MeasureShape> GetMeasuresForCurrent()
+            => GetShapesForCurrent().OfType<MeasureShape>().ToList();
+
+        public IReadOnlyList<CircleShape> GetCirclesForCurrent()
+            => GetShapesForCurrent().OfType<CircleShape>().ToList();
+
+        public IReadOnlyList<RectShape> GetRectsForCurrent()
+            => GetShapesForCurrent().OfType<RectShape>().ToList();
+
+        // Adder:
+        public void AddMeasureForCurrent(MeasureShape shape)
+            => ShapeStore.Shared.Add(CurrentImageKey, shape);
+
+        public void AddCircleForCurrent(CircleShape shape)
+            => ShapeStore.Shared.Add(CurrentImageKey, shape);
+
+        public void AddRectForCurrent(RectShape shape)
+            => ShapeStore.Shared.Add(CurrentImageKey, shape);
+
+        // Store-Change Handler:
+        private void OnShapeStoreChanged(string key)
         {
-            _currentToolRef?.OnDeactivated(this);
-            _currentToolRef = CurrentTool switch
-            {
-                ViewerTool.Measure => _measureTool,
-                _ => _cursorTool
-            };
-            _currentToolRef.OnActivated(this);
-            UpdateToolButtons();
-            InvalidateToolOverlay();
+            if (key == CurrentImageKey)
+                InvalidateToolOverlay();
         }
 
         // --- Cursor visuals (best effort) ---
@@ -80,10 +125,8 @@ namespace DViewer.Controls
         public void SetHoverCursor(HoverCursor c)
         {
 #if WINDOWS
-    // WinUI3: ProtectedCursor ist nicht öffentlich setzbar.
-    // Außerdem sind InputCursor/InputSystemCursor-APIs zwischen Versionen inkonsistent.
-    // -> sichere No-Op, damit alle TargetFrameworks bauen.
-    return;
+            // WinUI3: keine stabile öffentliche Cursor-API -> No-Op.
+            return;
 #else
             // Plattformen ohne Cursor-API: No-Op
             return;
@@ -93,12 +136,16 @@ namespace DViewer.Controls
         void OnCursorToolClicked(object? s, EventArgs e) { CurrentTool = ViewerTool.Cursor; }
         void OnMeasureToolClicked(object? s, EventArgs e) { CurrentTool = ViewerTool.Measure; }
 
+        // UpdateToolButtons
         void UpdateToolButtons()
         {
-            if (CursorToolFrame != null)
-                CursorToolFrame.BackgroundColor = CurrentTool == ViewerTool.Cursor ? Color.FromArgb("#22FFFFFF") : Colors.Transparent;
-            if (MeasureToolFrame != null)
-                MeasureToolFrame.BackgroundColor = CurrentTool == ViewerTool.Measure ? Color.FromArgb("#22FFFFFF") : Colors.Transparent;
+            var on = Color.FromArgb("#22FFFFFF");
+            var off = Colors.Transparent;
+
+            if (CursorToolFrame != null) CursorToolFrame.BackgroundColor = CurrentTool == ViewerTool.Cursor ? on : off;
+            if (MeasureToolFrame != null) MeasureToolFrame.BackgroundColor = CurrentTool == ViewerTool.Measure ? on : off;
+            if (CircleToolFrame != null) CircleToolFrame.BackgroundColor = CurrentTool == ViewerTool.Circle ? on : off;
+            if (RectToolFrame != null) RectToolFrame.BackgroundColor = CurrentTool == ViewerTool.Rectangle ? on : off;
 
             InvalidateToolOverlay();
         }
@@ -411,11 +458,13 @@ namespace DViewer.Controls
         // ===== Touch (non-Windows) =====
         private void OnPinchUpdated(object? s, PinchGestureUpdatedEventArgs e)
         {
-            // An aktives Tool weiterleiten
-            _currentToolRef?.OnPinch(this, e);
 #if WINDOWS
             return;
 #else
+            // Tool zuerst
+            _currentToolRef?.OnPinch(this, e);
+            if (_currentToolRef?.IsInteracting == true) return;
+
             if (CurrentTool != ViewerTool.Cursor) return;
             if (HasVideo || Img == null) return;
 
@@ -428,7 +477,7 @@ namespace DViewer.Controls
                     break;
                 case GestureStatus.Running:
                     var newScale = Math.Clamp(_currentScale * e.Scale, MinScale, MaxScale);
-                    Img.Scale = newScale;
+                    Img.Scale = newScale; // Auto-Invalidation greift hier
                     break;
                 case GestureStatus.Canceled:
                 case GestureStatus.Completed:
@@ -443,11 +492,12 @@ namespace DViewer.Controls
 
         private void OnPanUpdated(object? s, PanUpdatedEventArgs e)
         {
-            // An aktives Tool weiterleiten
-            _currentToolRef?.OnPan(this, e);
 #if WINDOWS
             return;
 #else
+            _currentToolRef?.OnPan(this, e);
+            if (_currentToolRef?.IsInteracting == true) return;
+
             if (CurrentTool != ViewerTool.Cursor) return;
             if (HasVideo || Img == null) return;
             if (_currentScale <= 1) return;
@@ -461,7 +511,7 @@ namespace DViewer.Controls
                 case GestureStatus.Running:
                     Img.TranslationX = _startX + e.TotalX;
                     Img.TranslationY = _startY + e.TotalY;
-                    ClampTranslation();
+                    ClampTranslation(); // Auto-Invalidation greift hier
                     break;
             }
 #endif
@@ -469,11 +519,12 @@ namespace DViewer.Controls
 
         private void OnWlPanUpdated(object? s, PanUpdatedEventArgs e)
         {
-            // Als "Two-Finger-Pan" an Tool weiterreichen (für Tools, die das verwenden)
-            _currentToolRef?.OnTwoFingerPan(this, e);
 #if WINDOWS
             return;
 #else
+            _currentToolRef?.OnTwoFingerPan(this, e);
+            if (_currentToolRef?.IsInteracting == true) return;
+
             if (CurrentTool != ViewerTool.Cursor) return;
             if (HasVideo || Item?.RenderFrameWithWindow == null) return;
             if (_pinching) return;
@@ -497,21 +548,22 @@ namespace DViewer.Controls
         // ===== MAUI-Pointer (non-Windows) =====
         private void OnPointerPressed(object? s, PointerEventArgs e)
         {
-            var posForTool = e.GetPosition(Container) ?? default;
-            // an Tool weiterleiten
-            _currentToolRef?.OnPointerPressed(this, posForTool, left: true, right: false, middle: false);
-
 #if WINDOWS
-            MaybeToggleToolbar(posForTool);
+            var pWin = e.GetPosition(Container) ?? default;
+            MaybeToggleToolbar(pWin);
             return;
 #else
-            MaybeToggleToolbar(posForTool);
-            if (CurrentTool != ViewerTool.Cursor) return;
-            if (HasVideo) return;
+            var p = e.GetPosition(Container) ?? default;
+            MaybeToggleToolbar(p);
 
-            _mouseStart = posForTool;
+            // 1) IMMER zuerst Tool informieren
+            _currentToolRef?.OnPointerPressed(this, p, left: true, right: false, middle: false);
+
+            // 2) Danach (optional) internen State für Cursor/WL merken
+            if (CurrentTool != ViewerTool.Cursor || HasVideo) return;
+
+            _mouseStart = p;
             _mouseLeftDown = true; _mouseRightDown = false; _mouseMiddleDown = false;
-
             _wlStartCenter = WindowCenter;
             _wlStartWidth = WindowWidth;
             _zoomStartScale = _currentScale;
@@ -523,20 +575,25 @@ namespace DViewer.Controls
 
         private void OnPointerMoved(object? s, PointerEventArgs e)
         {
-            var posForTool = e.GetPosition(Container) ?? default;
-            // an Tool weiterleiten
-            _currentToolRef?.OnPointerMoved(this, posForTool);
 #if WINDOWS
-            MaybeToggleToolbar(posForTool);
+            var pWin = e.GetPosition(Container) ?? default;
+            MaybeToggleToolbar(pWin);
             return;
 #else
-            MaybeToggleToolbar(posForTool);
+            var p = e.GetPosition(Container) ?? default;
+            MaybeToggleToolbar(p);
+
+            // 1) Tool zuerst updaten (damit Drag funktioniert)
+            _currentToolRef?.OnPointerMoved(this, p);
+
+            // 2) Wenn ein Tool interagiert → WL/WW/Zoom/Pan NICHT ausführen
+            if (_currentToolRef?.IsInteracting == true) return;
+
             if (CurrentTool != ViewerTool.Cursor) return;
             if (HasVideo || (!_mouseLeftDown && !_mouseRightDown && !_mouseMiddleDown)) return;
 
-            var pos = posForTool;
-            var dx = pos.X - _mouseStart.X;
-            var dy = pos.Y - _mouseStart.Y;
+            var dx = p.X - _mouseStart.X;
+            var dy = p.Y - _mouseStart.Y;
 
             if (_mouseLeftDown && Item?.RenderFrameWithWindow != null)
             {
@@ -549,25 +606,28 @@ namespace DViewer.Controls
             {
                 var factor = Math.Pow(1.01, -dy);
                 var newScale = Math.Clamp(_zoomStartScale * factor, MinScale, MaxScale);
-                ZoomAt(_zoomAnchorScreen, newScale);
+                ZoomAt(_zoomAnchorScreen, newScale); // ruft Invalidate bereits
             }
             else if (_mouseMiddleDown && Img != null)
             {
                 Img.TranslationX = _startX + dx;
                 Img.TranslationY = _startY + dy;
-                ClampTranslation();
+                ClampTranslation(); // Auto-Invalidation greift hier
             }
 #endif
         }
 
         private void OnPointerReleased(object? s, PointerEventArgs e)
         {
-            var posForTool = e.GetPosition(Container) ?? default;
-            // an Tool weiterleiten
-            _currentToolRef?.OnPointerReleased(this, posForTool);
 #if WINDOWS
             return;
 #else
+            var p = e.GetPosition(Container) ?? default;
+
+            // 1) Tool zuerst informieren (damit es IsInteracting=false setzen kann)
+            _currentToolRef?.OnPointerReleased(this, p);
+
+            // 2) Maus-Flags zurücksetzen
             _mouseLeftDown = _mouseRightDown = _mouseMiddleDown = false;
 #endif
         }
@@ -611,12 +671,9 @@ namespace DViewer.Controls
             var props = pt.Properties;
             var pos   = new Point(pt.Position.X, pt.Position.Y);
 
-            // an Tool weiterleiten (mit echten Buttons)
-            _currentToolRef?.OnPointerPressed(this, pos, props.IsLeftButtonPressed, props.IsRightButtonPressed, props.IsMiddleButtonPressed);
-
             MaybeToggleToolbar(pos);
 
-            // Doppel-Rechtsklick Reset
+            // Doppel-Rechtsklick Reset (lassen wie gehabt)
             if (props.IsRightButtonPressed)
             {
                 var now = DateTime.UtcNow;
@@ -636,12 +693,13 @@ namespace DViewer.Controls
                 }
             }
 
-            if (CurrentTool != ViewerTool.Cursor || HasVideo)
-            {
-                e.Handled = true;
-                try { _native.CapturePointer(e.Pointer); } catch { }
-                return;
-            }
+            // 1) IMMER zuerst Tool informieren
+            _currentToolRef?.OnPointerPressed(this, pos,
+                props.IsLeftButtonPressed, props.IsRightButtonPressed, props.IsMiddleButtonPressed);
+
+            // 2) Falls Tool nun interagiert → WL/WW-Setup nicht nötig
+            if (_currentToolRef?.IsInteracting == true) { e.Handled = true; return; }
+            if (CurrentTool != ViewerTool.Cursor || HasVideo) { e.Handled = true; return; }
 
             _mouseLeftDown   = props.IsLeftButtonPressed;
             _mouseRightDown  = props.IsRightButtonPressed;
@@ -667,17 +725,16 @@ namespace DViewer.Controls
 
             var pt  = e.GetCurrentPoint(_native);
             var pos = new Point(pt.Position.X, pt.Position.Y);
-
-            // an Tool weiterleiten
-            _currentToolRef?.OnPointerMoved(this, pos);
-
             MaybeToggleToolbar(pos);
 
-            if (CurrentTool != ViewerTool.Cursor || HasVideo || (!_mouseLeftDown && !_mouseRightDown && !_mouseMiddleDown))
-            {
-                e.Handled = true;
-                return;
-            }
+            // 1) Tool zuerst updaten
+            _currentToolRef?.OnPointerMoved(this, pos);
+
+            // 2) Wenn Tool interagiert → keinerlei WL/WW/Zoom/Pan
+            if (_currentToolRef?.IsInteracting == true) { e.Handled = true; return; }
+
+            if (CurrentTool != ViewerTool.Cursor) { e.Handled = true; return; }
+            if (HasVideo || (!_mouseLeftDown && !_mouseRightDown && !_mouseMiddleDown)) { e.Handled = true; return; }
 
             var dx = pos.X - _mouseStart.X;
             var dy = pos.Y - _mouseStart.Y;
@@ -693,13 +750,13 @@ namespace DViewer.Controls
             {
                 var factor   = Math.Pow(1.01, -dy);
                 var newScale = Math.Clamp(_zoomStartScale * factor, MinScale, MaxScale);
-                ZoomAt(_zoomAnchorScreen, newScale);
+                ZoomAt(_zoomAnchorScreen, newScale); // invalidiert bereits
             }
             else if (_mouseMiddleDown && Img != null)
             {
                 Img.TranslationX = _startX + dx;
                 Img.TranslationY = _startY + dy;
-                ClampTranslation();
+                ClampTranslation(); // Auto-Invalidation durch Img_PropertyChanged
             }
 
             e.Handled = true;
@@ -707,19 +764,29 @@ namespace DViewer.Controls
 
         private void Native_PointerReleased(object sender, PointerRoutedEventArgs e)
         {
-            // an Tool weiterleiten (Position bei Release)
-            if (_native != null)
-            {
-                var pt  = e.GetCurrentPoint(_native);
-                var pos = new Point(pt.Position.X, pt.Position.Y);
-                _currentToolRef?.OnPointerReleased(this, pos);
-            }
+            var pt = e.GetCurrentPoint(_native);
+            var pos = new Point(pt.Position.X, pt.Position.Y);
 
+            // 1) Tool zuerst informieren
+            _currentToolRef?.OnPointerReleased(this, pos);
+
+            // 2) Flags zurücksetzen
             _mouseLeftDown = _mouseRightDown = _mouseMiddleDown = false;
             try { _native?.ReleasePointerCapture(e.Pointer); } catch { }
             e.Handled = true;
         }
 #endif
+
+        // ===== Variante 5: PropertyChanged Hook für Img =====
+        private void Img_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName is nameof(View.TranslationX)
+                               or nameof(View.TranslationY)
+                               or nameof(View.Scale))
+            {
+                InvalidateToolOverlay();
+            }
+        }
 
         // ===== Zoom / Pan Utils =====
         private void ClampTranslation()
@@ -1083,38 +1150,17 @@ namespace DViewer.Controls
             return (false, 0, pxLen);
         }
 
-        // ======= Overlay-Storage (pro Bild/Frame) =======
-        //readonly Dictionary<string, List<MeasureShape>> _measuresByFrame = new();
-
-        // Eindeutiger Schlüssel (SOP|Frame)
+        // Eindeutiger Key (SOP|Frame)
         string CurrentImageKey
         {
             get
             {
-                var sop = GetTagValue("0008,0018", "(0008,0018)") ?? ""; // SOP Instance UID
+                var sop = GetTagValue("0008,0018", "(0008,0018)") ?? "";
                 return $"{sop}|{FrameIndex}";
             }
         }
 
-        public IReadOnlyList<MeasureShape> GetMeasuresForCurrent()
-            => DViewer.Controls.Overlays.MeasureStore.Shared.Snapshot(CurrentImageKey);
-
-        public void AddMeasureForCurrent(MeasureShape shape)
-            => DViewer.Controls.Overlays.MeasureStore.Shared.Add(CurrentImageKey, shape);
-
-        private void OnMeasureStoreChanged(string key)
-        {
-            // Nur neu zeichnen, wenn unsere aktuelle Ansicht betroffen ist
-            if (key == CurrentImageKey)
-                InvalidateToolOverlay();
-        }
-
-        //    protected override void OnHandlerChanged()
-        //{
-        //    base.OnHandlerChanged();
-        //    if (Handler == null)
-        //        DViewer.Controls.Overlays.MeasureStore.Shared.Changed -= OnMeasureStoreChanged;
-        //}
-
+        void OnCircleToolClicked(object? s, EventArgs e) { CurrentTool = ViewerTool.Circle; }
+        void OnRectToolClicked(object? s, EventArgs e) { CurrentTool = ViewerTool.Rectangle; }
     }
 }

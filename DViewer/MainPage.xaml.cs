@@ -7,6 +7,8 @@ namespace DViewer
 {
     public partial class MainPage : ContentPage
     {
+
+        readonly SettingsViewModel _settingsVm = new();
         private MainViewModel? VM => BindingContext as MainViewModel;
 
         // -------- Vollbild-Flags (für Overlay) --------
@@ -64,10 +66,13 @@ namespace DViewer
             RightViewerFull.FullscreenRequested += (_, __) => RightFullscreenVisible = false;
         }
 
-        protected override void OnAppearing()
+        protected async override void OnAppearing()
         {
             base.OnAppearing();
             _ = ProcessPendingOpensAsync();
+
+
+            await _settingsVm.LoadAsync();
         }
 
         // ----------------- Externe Öffnungen (Dateiverknüpfung) -----------------
@@ -188,5 +193,57 @@ namespace DViewer
 
             await DisplayAlert("Hinweis", "Verdrahtung mit dem vorhandenen Tag-Dialog kann ich sofort ergänzen, sobald du mir sagst, wie er das Ergebnis übergibt (Event/Task/Messaging).", "OK");
         }
+
+
+        // ------- Buttons: Lokaler Knoten -------
+        private async void OnBrowseStorageClicked(object sender, EventArgs e)
+            => await _settingsVm.BrowseStorageAsync(this);
+
+        private async void OnTestLocalDicomClicked(object sender, EventArgs e)
+            => await _settingsVm.TestLocalScpAsync(this);
+
+        private async void OnSaveLocalDicomClicked(object sender, EventArgs e)
+            => await _settingsVm.SaveAsync();
+
+        // ------- SEND-Nodes -------
+        private async void OnAddSendNodeClicked(object s, EventArgs e)
+            => await _settingsVm.AddNodeInteractiveAsync(this, NodeKind.Send);
+
+        private async void OnEditSendNodeClicked(object s, EventArgs e)
+            => await _settingsVm.EditSelectedNodeInteractiveAsync(this, NodeKind.Send);
+
+        private void OnRemoveSendNodeClicked(object s, EventArgs e)
+            => _settingsVm.RemoveSelectedNode(NodeKind.Send);
+
+        private async void OnTestSendNodeClicked(object s, EventArgs e)
+            => await _settingsVm.TestSelectedNodeAsync(this, NodeKind.Send);
+
+        // ------- MWL-Nodes -------
+        private async void OnAddMwNodeClicked(object s, EventArgs e)
+            => await _settingsVm.AddNodeInteractiveAsync(this, NodeKind.Worklist);
+
+        private async void OnEditMwNodeClicked(object s, EventArgs e)
+            => await _settingsVm.EditSelectedNodeInteractiveAsync(this, NodeKind.Worklist);
+
+        private void OnRemoveMwNodeClicked(object s, EventArgs e)
+            => _settingsVm.RemoveSelectedNode(NodeKind.Worklist);
+
+        private async void OnTestMwNodeClicked(object s, EventArgs e)
+            => await _settingsVm.TestSelectedNodeAsync(this, NodeKind.Worklist);
+
+        // ------- Q/R-Nodes -------
+        private async void OnAddQrNodeClicked(object s, EventArgs e)
+            => await _settingsVm.AddNodeInteractiveAsync(this, NodeKind.QueryRetrieve);
+
+        private async void OnEditQrNodeClicked(object s, EventArgs e)
+            => await _settingsVm.EditSelectedNodeInteractiveAsync(this, NodeKind.QueryRetrieve);
+
+        private void OnRemoveQrNodeClicked(object s, EventArgs e)
+            => _settingsVm.RemoveSelectedNode(NodeKind.QueryRetrieve);
+
+        private async void OnTestQrNodeClicked(object s, EventArgs e)
+            => await _settingsVm.TestSelectedNodeAsync(this, NodeKind.QueryRetrieve);
     }
 }
+
+
