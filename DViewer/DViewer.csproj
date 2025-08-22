@@ -89,7 +89,7 @@
 	  <Compile Update="AddDicomTagPage.xaml.cs">
 	    <DependentUpon>AddDicomTagPage.xaml</DependentUpon>
 	  </Compile>
-	  <Compile Update="DicomViewerView.xaml.cs">
+	  <Compile Update="Controls\DicomViewerView.xaml.cs">
 	    <DependentUpon>DicomViewerView.xaml</DependentUpon>
 	  </Compile>
 	</ItemGroup>
@@ -101,7 +101,7 @@
 	  <MauiXaml Update="AddDicomTagPage.xaml">
 	    <Generator>MSBuild:Compile</Generator>
 	  </MauiXaml>
-	  <MauiXaml Update="DicomViewerView.xaml">
+	  <MauiXaml Update="Controls\DicomViewerView.xaml">
 	    <Generator>MSBuild:Compile</Generator>
 	  </MauiXaml>
 	</ItemGroup>

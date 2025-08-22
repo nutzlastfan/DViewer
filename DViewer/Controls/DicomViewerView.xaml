@@ -17,7 +17,7 @@
 
     <Grid x:Name="Root">
 
-        <!-- Zentraler Viewport (Bild + Video + Overlays + Toolbar) -->
+        <!-- Zentraler Viewport (Bild + Video + Overlays + Toolbar + ToolOverlay) -->
         <Grid x:Name="ImageLayer">
 
             <!-- Bild -->
@@ -210,50 +210,55 @@
                        TextColor="White" VerticalTextAlignment="Center"/>
             </Grid>
 
-            <!-- ======= TOP TOOLBAR (peeking) ======= -->
+            <!-- === Peek Toolbar (oben, auto-show/hide) === -->
             <Grid x:Name="TopToolbar"
-                  HorizontalOptions="Fill"
+                  HorizontalOptions="Center"
                   VerticalOptions="Start"
-                  BackgroundColor="#55000000"
-                  Padding="6,6"
-                  InputTransparent="False">
+                  Padding="8"
+                  Margin="0"
+                  BackgroundColor="#AA000000"
+                  InputTransparent="False"
+                  TranslationY="-28">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="8"/>
                     <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
 
-                <!-- Cursor Tool -->
                 <Frame x:Name="CursorToolFrame"
                        Grid.Column="0"
-                       Padding="8" Margin="4,0"
+                       CornerRadius="8"
+                       Padding="6"
                        HasShadow="False"
-                       CornerRadius="6"
-                       BackgroundColor="#22FFFFFF">
-                    <Button x:Name="CursorToolBtn"
+                       BackgroundColor="#22000000">
+                    <Button x:Name="CursorBtn"
                             Text="🖱"
-                            FontSize="18"
-                            BackgroundColor="Transparent"
+                            FontSize="16"
+                            BackgroundColor="#22000000"
+                            TextColor="White"
                             Clicked="OnCursorToolClicked"/>
                 </Frame>
 
-                <!-- Measure Tool -->
                 <Frame x:Name="MeasureToolFrame"
-                       Grid.Column="1"
-                       Padding="8" Margin="4,0"
+                       Grid.Column="2"
+                       CornerRadius="8"
+                       Padding="6"
                        HasShadow="False"
-                       CornerRadius="6"
-                       BackgroundColor="Transparent">
-                    <Button x:Name="MeasureToolBtn"
+                       BackgroundColor="#22000000">
+                    <Button x:Name="MeasureBtn"
                             Text="📏"
-                            FontSize="18"
-                            BackgroundColor="Transparent"
+                            FontSize="16"
+                            BackgroundColor="#22000000"
+                            TextColor="White"
                             Clicked="OnMeasureToolClicked"/>
                 </Frame>
-
-                <!-- (Spacer rechts) -->
-                <Grid Grid.Column="2"/>
             </Grid>
+
+            <!-- Zeichenfläche für Tools (Linien, Marker etc.) -->
+            <GraphicsView x:Name="ToolOverlay"
+                          HorizontalOptions="Fill"
+                          VerticalOptions="Fill"
+                          InputTransparent="True" />
 
             <!-- Property-Element am Ende (verhindert XLS0509) -->
             <Grid.GestureRecognizers>

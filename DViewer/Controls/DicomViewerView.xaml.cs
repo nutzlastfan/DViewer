@@ -1,10 +1,16 @@
-﻿using System;
+﻿// === DicomViewerView.cs (zusammengeführt) ===
+using System;
 using System.ComponentModel;
 using System.Globalization;
+using System.Collections.Generic;
 using System.Windows.Input;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
 using CommunityToolkit.Maui.Views;
+using DViewer.Controls.Tools;
+using DViewer.Controls.Overlays;
+using System.Reflection;
+using System.Runtime.ConstrainedExecution;
 
 #if WINDOWS
 using Microsoft.UI.Xaml;
@@ -19,11 +25,23 @@ namespace DViewer.Controls
         {
             InitializeComponent();
 
+            // ToolOverlay: Drawable, das die aktiven Tools zeichnen lässt
+            if (ToolOverlay != null)
+                ToolOverlay.Drawable = new ToolOverlayDrawable(this);
+
             // Toolbar initial peeking
             TopToolbar.SizeChanged += (_, __) => InitToolbarPeek();
+
+            // Aktuelles Tool initialisieren
+            OnToolChanged();
+
+            UpdateToolButtons();
+
+            DViewer.Controls.Overlays.MeasureStore.Shared.Changed += OnMeasureStoreChanged;
+
         }
 
-        // ======== Tool-Auswahl ========
+        // ======== Tool-Auswahl (Cursor / Measure) ========
         public enum ViewerTool { Cursor, Measure }
 
         public static readonly BindableProperty CurrentToolProperty =
@@ -32,7 +50,7 @@ namespace DViewer.Controls
                 typeof(ViewerTool),
                 typeof(DicomViewerView),
                 ViewerTool.Cursor,
-                propertyChanged: (b, o, n) => ((DicomViewerView)b).UpdateToolButtons());
+                propertyChanged: (b, o, n) => ((DicomViewerView)b).OnToolChanged());
 
         public ViewerTool CurrentTool
         {
@@ -40,16 +58,49 @@ namespace DViewer.Controls
             set => SetValue(CurrentToolProperty, value);
         }
 
+        IViewerTool? _currentToolRef;
+        readonly CursorTool _cursorTool = new();
+        readonly MeasureTool _measureTool = new();
+
+        void OnToolChanged()
+        {
+            _currentToolRef?.OnDeactivated(this);
+            _currentToolRef = CurrentTool switch
+            {
+                ViewerTool.Measure => _measureTool,
+                _ => _cursorTool
+            };
+            _currentToolRef.OnActivated(this);
+            UpdateToolButtons();
+            InvalidateToolOverlay();
+        }
+
+        // --- Cursor visuals (best effort) ---
+        public enum HoverCursor { Arrow, Crosshair, SizeAll }
+        public void SetHoverCursor(HoverCursor c)
+        {
+#if WINDOWS
+    // WinUI3: ProtectedCursor ist nicht öffentlich setzbar.
+    // Außerdem sind InputCursor/InputSystemCursor-APIs zwischen Versionen inkonsistent.
+    // -> sichere No-Op, damit alle TargetFrameworks bauen.
+    return;
+#else
+            // Plattformen ohne Cursor-API: No-Op
+            return;
+#endif
+        }
+
         void OnCursorToolClicked(object? s, EventArgs e) { CurrentTool = ViewerTool.Cursor; }
         void OnMeasureToolClicked(object? s, EventArgs e) { CurrentTool = ViewerTool.Measure; }
 
         void UpdateToolButtons()
         {
-            // einfache visuelle Markierung
             if (CursorToolFrame != null)
                 CursorToolFrame.BackgroundColor = CurrentTool == ViewerTool.Cursor ? Color.FromArgb("#22FFFFFF") : Colors.Transparent;
             if (MeasureToolFrame != null)
                 MeasureToolFrame.BackgroundColor = CurrentTool == ViewerTool.Measure ? Color.FromArgb("#22FFFFFF") : Colors.Transparent;
+
+            InvalidateToolOverlay();
         }
 
         Grid Container => ImageLayer ?? Root;
@@ -139,7 +190,11 @@ namespace DViewer.Controls
             BindableProperty.Create(nameof(FrameIndex), typeof(int), typeof(DicomViewerView), 0,
                 propertyChanged: (b, o, n) => ((DicomViewerView)b).OnFrameIndexChanged());
         public int FrameIndex { get => (int)GetValue(FrameIndexProperty); set => SetValue(FrameIndexProperty, value); }
-        private void OnFrameIndexChanged() => RenderCurrent();
+        private void OnFrameIndexChanged()
+        {
+            RenderCurrent();
+            InvalidateToolOverlay(); // Overlays pro Frame neu
+        }
 
         // ---------- Commands ----------
         public static readonly BindableProperty PrevFrameCommandProperty =
@@ -280,9 +335,57 @@ namespace DViewer.Controls
         }
 
         // ===================== Gesten =====================
-        const double MIN_SCALE = 1.0;
-        const double MAX_SCALE = 12.0;
+        public double MinScale => 1.0;
+        public double MaxScale => 12.0;
+
         double _currentScale = 1;
+        public double CurrentScale => _currentScale;
+
+        public void SetScale(double s)
+        {
+            if (Img == null) return;
+            Img.Scale = Math.Clamp(s, MinScale, MaxScale);
+        }
+
+        public void CommitScale()
+        {
+            if (Img == null) return;
+            _currentScale = Img.Scale;
+            ClampTranslation();
+            OnPropertyChanged(nameof(OverlayZoomText));
+        }
+
+        public void SetImageAnchor(double ax, double ay)
+        {
+            if (Img == null) return;
+            Img.AnchorX = ax;
+            Img.AnchorY = ay;
+        }
+
+        public void GetTranslation(out double tx, out double ty)
+        {
+            tx = Img?.TranslationX ?? 0;
+            ty = Img?.TranslationY ?? 0;
+        }
+
+        public void SetTranslation(double tx, double ty)
+        {
+            if (Img == null) return;
+            Img.TranslationX = tx;
+            Img.TranslationY = ty;
+            ClampTranslation();
+            InvalidateToolOverlay();
+        }
+
+        // --- Public API für Tools (WL/WW) ---
+        public void SetWindowCenter(double c) => WindowCenter = c;
+        public void SetWindowWidth(double w) => WindowWidth = Math.Max(1, w);
+
+        // --- Public Zugriff auf <Image> (statt private Feld "Img") ---
+        public Image? ImageElement => Img;
+
+        public bool CanWindowLevel => Item?.RenderFrameWithWindow != null && !HasVideo;
+
         double _startX, _startY;
         bool _pinching;
 
@@ -293,7 +396,7 @@ namespace DViewer.Controls
 
         double _wlStartCenter, _wlStartWidth;
 
-        // Maus: Links = WL (nur Cursor-Tool), Rechts = Zoom (um Startpunkt), Mitte = Move
+        // Maus: Links = WL (nur Cursor-Tool), Rechts = Zoom, Mitte = Move
         bool _mouseLeftDown, _mouseRightDown, _mouseMiddleDown;
         Point _mouseStart;
         double _zoomStartScale;
@@ -308,6 +411,8 @@ namespace DViewer.Controls
         // ===== Touch (non-Windows) =====
         private void OnPinchUpdated(object? s, PinchGestureUpdatedEventArgs e)
         {
+            // An aktives Tool weiterleiten
+            _currentToolRef?.OnPinch(this, e);
 #if WINDOWS
             return;
 #else
@@ -322,7 +427,7 @@ namespace DViewer.Controls
                     Img.AnchorY = e.ScaleOrigin.Y;
                     break;
                 case GestureStatus.Running:
-                    var newScale = Math.Clamp(_currentScale * e.Scale, MIN_SCALE, MAX_SCALE);
+                    var newScale = Math.Clamp(_currentScale * e.Scale, MinScale, MaxScale);
                     Img.Scale = newScale;
                     break;
                 case GestureStatus.Canceled:
@@ -338,6 +443,8 @@ namespace DViewer.Controls
 
         private void OnPanUpdated(object? s, PanUpdatedEventArgs e)
         {
+            // An aktives Tool weiterleiten
+            _currentToolRef?.OnPan(this, e);
 #if WINDOWS
             return;
 #else
@@ -362,6 +469,8 @@ namespace DViewer.Controls
 
         private void OnWlPanUpdated(object? s, PanUpdatedEventArgs e)
         {
+            // Als "Two-Finger-Pan" an Tool weiterreichen (für Tools, die das verwenden)
+            _currentToolRef?.OnTwoFingerPan(this, e);
 #if WINDOWS
             return;
 #else
@@ -388,15 +497,19 @@ namespace DViewer.Controls
         // ===== MAUI-Pointer (non-Windows) =====
         private void OnPointerPressed(object? s, PointerEventArgs e)
         {
+            var posForTool = e.GetPosition(Container) ?? default;
+            // an Tool weiterleiten
+            _currentToolRef?.OnPointerPressed(this, posForTool, left: true, right: false, middle: false);
+
 #if WINDOWS
-            MaybeToggleToolbar(e.GetPosition(Container) ?? default);
+            MaybeToggleToolbar(posForTool);
             return;
 #else
-            MaybeToggleToolbar(e.GetPosition(Container) ?? default);
+            MaybeToggleToolbar(posForTool);
             if (CurrentTool != ViewerTool.Cursor) return;
             if (HasVideo) return;
 
-            _mouseStart = e.GetPosition(Container) ?? default;
+            _mouseStart = posForTool;
             _mouseLeftDown = true; _mouseRightDown = false; _mouseMiddleDown = false;
 
             _wlStartCenter = WindowCenter;
@@ -410,15 +523,18 @@ namespace DViewer.Controls
 
         private void OnPointerMoved(object? s, PointerEventArgs e)
         {
+            var posForTool = e.GetPosition(Container) ?? default;
+            // an Tool weiterleiten
+            _currentToolRef?.OnPointerMoved(this, posForTool);
 #if WINDOWS
-            MaybeToggleToolbar(e.GetPosition(Container) ?? default);
+            MaybeToggleToolbar(posForTool);
             return;
 #else
-            MaybeToggleToolbar(e.GetPosition(Container) ?? default);
+            MaybeToggleToolbar(posForTool);
             if (CurrentTool != ViewerTool.Cursor) return;
             if (HasVideo || (!_mouseLeftDown && !_mouseRightDown && !_mouseMiddleDown)) return;
 
-            var pos = e.GetPosition(Container) ?? default;
+            var pos = posForTool;
             var dx = pos.X - _mouseStart.X;
             var dy = pos.Y - _mouseStart.Y;
 
@@ -432,7 +548,7 @@ namespace DViewer.Controls
             else if (_mouseRightDown && Img != null)
             {
                 var factor = Math.Pow(1.01, -dy);
-                var newScale = Math.Clamp(_zoomStartScale * factor, MIN_SCALE, MAX_SCALE);
+                var newScale = Math.Clamp(_zoomStartScale * factor, MinScale, MaxScale);
                 ZoomAt(_zoomAnchorScreen, newScale);
             }
             else if (_mouseMiddleDown && Img != null)
@@ -446,6 +562,9 @@ namespace DViewer.Controls
 
         private void OnPointerReleased(object? s, PointerEventArgs e)
         {
+            var posForTool = e.GetPosition(Container) ?? default;
+            // an Tool weiterleiten
+            _currentToolRef?.OnPointerReleased(this, posForTool);
 #if WINDOWS
             return;
 #else
@@ -490,20 +609,23 @@ namespace DViewer.Controls
 
             var pt    = e.GetCurrentPoint(_native);
             var props = pt.Properties;
+            var pos   = new Point(pt.Position.X, pt.Position.Y);
 
-            MaybeToggleToolbar(new Point(pt.Position.X, pt.Position.Y));
+            // an Tool weiterleiten (mit echten Buttons)
+            _currentToolRef?.OnPointerPressed(this, pos, props.IsLeftButtonPressed, props.IsRightButtonPressed, props.IsMiddleButtonPressed);
+
+            MaybeToggleToolbar(pos);
 
             // Doppel-Rechtsklick Reset
             if (props.IsRightButtonPressed)
             {
                 var now = DateTime.UtcNow;
-                var pos = new Point(pt.Position.X, pt.Position.Y);
                 bool isDouble =
                     (now - _lastRightDownTime).TotalMilliseconds <= RIGHT_DBLCLICK_MS &&
                     Math.Abs(pos.X - _lastRightDownPos.X) <= RIGHT_DBLCLICK_MAXPX &&
                     Math.Abs(pos.Y - _lastRightDownPos.Y) <= RIGHT_DBLCLICK_MAXPX;
                 _lastRightDownTime = now;
-                _lastRightDownPos = pos;
+                _lastRightDownPos  = pos;
 
                 if (isDouble)
                 {
@@ -514,14 +636,18 @@ namespace DViewer.Controls
                 }
             }
 
-            if (CurrentTool != ViewerTool.Cursor) return;
-            if (HasVideo) return;
+            if (CurrentTool != ViewerTool.Cursor || HasVideo)
+            {
+                e.Handled = true;
+                try { _native.CapturePointer(e.Pointer); } catch { }
+                return;
+            }
 
             _mouseLeftDown   = props.IsLeftButtonPressed;
             _mouseRightDown  = props.IsRightButtonPressed;
             _mouseMiddleDown = props.IsMiddleButtonPressed;
 
-            _mouseStart        = new Point(pt.Position.X, pt.Position.Y);
+            _mouseStart        = pos;
             _zoomAnchorScreen  = _mouseStart;
             _zoomStartScale    = _currentScale;
 
@@ -540,12 +666,19 @@ namespace DViewer.Controls
             if (_native == null) return;
 
             var pt  = e.GetCurrentPoint(_native);
-            MaybeToggleToolbar(new Point(pt.Position.X, pt.Position.Y));
-
-            if (CurrentTool != ViewerTool.Cursor) { e.Handled = true; return; }
-            if (HasVideo || (!_mouseLeftDown && !_mouseRightDown && !_mouseMiddleDown)) { e.Handled = true; return; }
-
             var pos = new Point(pt.Position.X, pt.Position.Y);
+
+            // an Tool weiterleiten
+            _currentToolRef?.OnPointerMoved(this, pos);
+
+            MaybeToggleToolbar(pos);
+
+            if (CurrentTool != ViewerTool.Cursor || HasVideo || (!_mouseLeftDown && !_mouseRightDown && !_mouseMiddleDown))
+            {
+                e.Handled = true;
+                return;
+            }
+
             var dx = pos.X - _mouseStart.X;
             var dy = pos.Y - _mouseStart.Y;
 
@@ -559,7 +692,7 @@ namespace DViewer.Controls
             else if (_mouseRightDown)
             {
                 var factor   = Math.Pow(1.01, -dy);
-                var newScale = Math.Clamp(_zoomStartScale * factor, MIN_SCALE, MAX_SCALE);
+                var newScale = Math.Clamp(_zoomStartScale * factor, MinScale, MaxScale);
                 ZoomAt(_zoomAnchorScreen, newScale);
             }
             else if (_mouseMiddleDown && Img != null)
@@ -574,6 +707,14 @@ namespace DViewer.Controls
 
         private void Native_PointerReleased(object sender, PointerRoutedEventArgs e)
         {
+            // an Tool weiterleiten (Position bei Release)
+            if (_native != null)
+            {
+                var pt  = e.GetCurrentPoint(_native);
+                var pos = new Point(pt.Position.X, pt.Position.Y);
+                _currentToolRef?.OnPointerReleased(this, pos);
+            }
+
             _mouseLeftDown = _mouseRightDown = _mouseMiddleDown = false;
             try { _native?.ReleasePointerCapture(e.Pointer); } catch { }
             e.Handled = true;
@@ -606,11 +747,11 @@ namespace DViewer.Controls
             Img.TranslationY = Math.Clamp(Img.TranslationY, -maxY, maxY);
         }
 
-        private void ZoomAt(Point screenPt, double newScale)
+        public void ZoomAt(Point screenPt, double newScale)
         {
             if (Img == null) return;
 
-            newScale = Math.Clamp(newScale, MIN_SCALE, MAX_SCALE);
+            newScale = Math.Clamp(newScale, MinScale, MaxScale);
 
             double cx = (Container?.Width ?? 0) * 0.5;
             double cy = (Container?.Height ?? 0) * 0.5;
@@ -628,6 +769,7 @@ namespace DViewer.Controls
             _currentScale = newScale;
             ClampTranslation();
             OnPropertyChanged(nameof(OverlayZoomText));
+            InvalidateToolOverlay();
         }
 
         // ===== Reset (Doppel-Rechtsklick) =====
@@ -642,6 +784,7 @@ namespace DViewer.Controls
             _currentScale = 1;
             OnPropertyChanged(nameof(OverlayZoomText));
             ResetWindowLevelToMetadata();
+            InvalidateToolOverlay();
         }
 
         private void ResetWindowLevelToMetadata()
@@ -677,7 +820,7 @@ namespace DViewer.Controls
             return double.NaN;
         }
 
-        // ===================== Overlay-Fallbacks / DICOM-Tags =====================
+        // ======= DICOM/Overlay Helpers =======
         public string OverlayPatientNameWithSex
             => !string.IsNullOrWhiteSpace(PatientNameWithSex) ? PatientNameWithSex : ComposeNameWithSex();
         public string OverlaySpeciesBreed
@@ -775,8 +918,8 @@ namespace DViewer.Controls
         }
 
         // ======= Toolbar Peek/Auto-Hide =======
-        const double TOOL_REVEAL_MARGIN = 12;   // Mausnähe in px zum Einblenden
-        const double TOOL_PEEK_PIXELS = 6;    // sichtbarer Rand im eingeklappten Zustand
+        const double TOOL_REVEAL_MARGIN = 12;
+        const double TOOL_PEEK_PIXELS = 6;
         readonly TimeSpan TOOLBAR_HIDE_DELAY = TimeSpan.FromMilliseconds(1200);
 
         double _toolbarHiddenY = -40;
@@ -797,7 +940,6 @@ namespace DViewer.Controls
         {
             if (TopToolbar == null) return;
 
-            // nahe am oberen Rand?
             if (screenPos.Y <= TOOL_REVEAL_MARGIN)
                 ShowToolbar();
             else
@@ -821,7 +963,6 @@ namespace DViewer.Controls
             var stamp = _toolbarKeepAliveStamp = DateTime.UtcNow;
             (Dispatcher ?? Microsoft.Maui.Controls.Application.Current?.Dispatcher)?.StartTimer(TOOLBAR_HIDE_DELAY, () =>
             {
-                // nur hide, wenn kein neuer KeepAlive kam
                 if (_toolbarKeepAliveStamp != stamp) return false;
                 HideToolbar();
                 return false;
@@ -836,5 +977,144 @@ namespace DViewer.Controls
             var y = _toolbarHiddenY;
             TopToolbar.TranslateTo(0, y, 180, Easing.CubicIn);
         }
+
+        // ======= Tool Overlay: Drawable, das das aktive Tool zeichnet =======
+        private sealed class ToolOverlayDrawable : IDrawable
+        {
+            private readonly DicomViewerView _owner;
+            public ToolOverlayDrawable(DicomViewerView owner) { _owner = owner; }
+            public void Draw(ICanvas canvas, RectF dirtyRect)
+            {
+                _owner._currentToolRef?.Draw(canvas, dirtyRect, _owner);
+            }
+        }
+
+        public void InvalidateToolOverlay() => ToolOverlay?.Invalidate();
+
+        // ======= DICOM-Geometrie & Koordinaten-Konvertierung =======
+        public bool TryGetImagePixelSize(out int cols, out int rows)
+        {
+            cols = rows = 0;
+            var sCols = GetTagValue("0028,0011", "(0028,0011)"); // Columns
+            var sRows = GetTagValue("0028,0010", "(0028,0010)"); // Rows
+            if (int.TryParse(sCols, out cols) && int.TryParse(sRows, out rows) && cols > 0 && rows > 0)
+                return true;
+            return false;
+        }
+
+        public bool TryGetPixelSpacing(out double rowMm, out double colMm)
+        {
+            rowMm = colMm = 0;
+            var ps = GetTagValue("0028,0030", "(0028,0030)"); // Pixel Spacing: Row\Col
+            if (string.IsNullOrWhiteSpace(ps)) return false;
+
+            var parts = ps.Split('\\', '/', ';', '|');
+            if (parts.Length >= 2 &&
+                double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out rowMm) &&
+                double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out colMm) &&
+                rowMm > 0 && colMm > 0)
+                return true;
+
+            return false;
+        }
+
+        // Screen → Image (col,row)
+        public bool TryScreenToImage(Point screen, out PointF img)
+        {
+            img = default;
+            if (Img == null) return false;
+            if (!TryGetImagePixelSize(out var cols, out var rows)) return false;
+
+            var cx = (Container?.Width ?? 0) * 0.5;
+            var cy = (Container?.Height ?? 0) * 0.5;
+
+            var sBase = Math.Min(Img.Width / cols, Img.Height / rows); // AspectFit
+            var s = sBase * _currentScale;
+            if (s <= 0) return false;
+
+            var left = cx - (cols * s) / 2 + Img.TranslationX;
+            var top = cy - (rows * s) / 2 + Img.TranslationY;
+
+            var col = (screen.X - left) / s;
+            var row = (screen.Y - top) / s;
+
+            img = new PointF((float)col, (float)row);
+            return true;
+        }
+
+        // Image (col,row) → Screen
+        public bool TryImageToScreen(PointF img, out Point screen)
+        {
+            screen = default;
+            if (Img == null) return false;
+            if (!TryGetImagePixelSize(out var cols, out var rows)) return false;
+
+            var cx = (Container?.Width ?? 0) * 0.5;
+            var cy = (Container?.Height ?? 0) * 0.5;
+
+            var sBase = Math.Min(Img.Width / cols, Img.Height / rows);
+            var s = sBase * _currentScale;
+            if (s <= 0) return false;
+
+            var left = cx - (cols * s) / 2 + Img.TranslationX;
+            var top = cy - (rows * s) / 2 + Img.TranslationY;
+
+            var x = left + img.X * s;
+            var y = top + img.Y * s;
+
+            screen = new Point(x, y);
+            return true;
+        }
+
+        // Länge zwischen zwei Bildpunkten
+        public (bool mmOk, double mm, double px) MeasureLength(PointF a, PointF b)
+        {
+            var dxPx = b.X - a.X;
+            var dyPx = b.Y - a.Y;
+            var pxLen = Math.Sqrt(dxPx * dxPx + dyPx * dyPx);
+
+            if (TryGetPixelSpacing(out var rowMm, out var colMm))
+            {
+                var mmX = dxPx * colMm;
+                var mmY = dyPx * rowMm;
+                var mm = Math.Sqrt(mmX * mmX + mmY * mmY);
+                return (true, mm, pxLen);
+            }
+            return (false, 0, pxLen);
+        }
+
+        // ======= Overlay-Storage (pro Bild/Frame) =======
+        //readonly Dictionary<string, List<MeasureShape>> _measuresByFrame = new();
+
+        // Eindeutiger Schlüssel (SOP|Frame)
+        string CurrentImageKey
+        {
+            get
+            {
+                var sop = GetTagValue("0008,0018", "(0008,0018)") ?? ""; // SOP Instance UID
+                return $"{sop}|{FrameIndex}";
+            }
+        }
+
+        public IReadOnlyList<MeasureShape> GetMeasuresForCurrent()
+            => DViewer.Controls.Overlays.MeasureStore.Shared.Snapshot(CurrentImageKey);
+
+        public void AddMeasureForCurrent(MeasureShape shape)
+            => DViewer.Controls.Overlays.MeasureStore.Shared.Add(CurrentImageKey, shape);
+
+        private void OnMeasureStoreChanged(string key)
+        {
+            // Nur neu zeichnen, wenn unsere aktuelle Ansicht betroffen ist
+            if (key == CurrentImageKey)
+                InvalidateToolOverlay();
+        }
+
+        //    protected override void OnHandlerChanged()
+        //{
+        //    base.OnHandlerChanged();
+        //    if (Handler == null)
+        //        DViewer.Controls.Overlays.MeasureStore.Shared.Changed -= OnMeasureStoreChanged;
+        //}
+
     }
 }
