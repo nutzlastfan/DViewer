@@ -1,7 +1,9 @@
 ﻿// AppSettings.cs
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.IO;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
@@ -11,14 +13,40 @@ namespace DViewer
 {
     /// <summary>
     /// Remote DICOM-Knoten (für Send / MWL / Q/R).
+    /// Jetzt mit INotifyPropertyChanged, damit UI-Listen bei Änderungen sofort aktualisieren.
     /// </summary>
-    public sealed class DicomNode
+    public sealed class DicomNode : INotifyPropertyChanged
     {
-        public string AeTitle { get; set; } = "";
-        public string Host { get; set; } = "";
-        public int Port { get; set; } = 104;
-        public string CalledAe { get; set; } = "";
-        public bool UseTls { get; set; }
+        string _aeTitle = "";
+        string _host = "";
+        int _port = 104;
+        string _calledAe = "";
+        bool _useTls;
+
+        public string AeTitle { get => _aeTitle; set => Set(ref _aeTitle, value); }
+        public string Host { get => _host; set => Set(ref _host, value); }
+        public int Port { get => _port; set => Set(ref _port, value); }
+        public string CalledAe { get => _calledAe; set => Set(ref _calledAe, value); }
+        public bool UseTls { get => _useTls; set => Set(ref _useTls, value); }
+
+        public DicomNode Clone() => new()
+        {
+            AeTitle = AeTitle,
+            Host = Host,
+            Port = Port,
+            CalledAe = CalledAe,
+            UseTls = UseTls
+        };
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        bool Set<T>(ref T field, T value, [CallerMemberName] string? name = null)
+        {
+            if (EqualityComparer<T>.Default.Equals(field, value)) return false;
+            field = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+            return true;
+        }
     }
 
     /// <summary>
@@ -96,8 +124,15 @@ namespace DViewer
             var p = path ?? SettingsPath ?? GetDefaultPath();
             Directory.CreateDirectory(Path.GetDirectoryName(p)!);
 
-            await using var fs = File.Create(p);
-            await JsonSerializer.SerializeAsync(fs, this, JsonOptions);
+            // optional: atomisches Schreiben (Tempdatei -> Replace)
+            var tmp = p + ".tmp";
+            await using (var fs = File.Create(tmp))
+            {
+                await JsonSerializer.SerializeAsync(fs, this, JsonOptions);
+            }
+            File.Copy(tmp, p, overwrite: true);
+            File.Delete(tmp);
+
             SettingsPath = p;
         }
 

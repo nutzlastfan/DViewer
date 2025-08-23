@@ -288,20 +288,39 @@ namespace DViewer
             => Binding.DoNothing;
     }
 
+    /// <summary>
+    /// Strings:  empty/null  -> true  (optional invertierbar)
+    /// Andere Objekte (u.a. DicomNode):  NOT NULL -> true  (optional invertierbar)
+    /// </summary>
     public sealed class NullToBoolConverter : IValueConverter
     {
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
         {
-            bool isNullOrEmpty = value is null || (value is string s && string.IsNullOrEmpty(s));
-            bool invert = false;
-            if (parameter is bool b) invert = b;
-            else if (parameter is string str && bool.TryParse(str, out var p)) invert = p;
+            bool invert = ParseInvert(parameter);
 
-            return invert ? !isNullOrEmpty : isNullOrEmpty;
+            bool result;
+
+            if (value is string s)                    // altes Verhalten für Strings
+            {
+                result = string.IsNullOrEmpty(s);
+            }
+            else                                       // neu: für DicomNode & Co. -> NotNull
+            {
+                result = value != null;
+            }
+
+            return invert ? !result : result;
         }
 
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
             => throw new NotSupportedException();
+
+        private static bool ParseInvert(object parameter)
+        {
+            if (parameter is bool b) return b;
+            if (parameter is string str && bool.TryParse(str, out var p)) return p;
+            return false;
+        }
     }
 
     public sealed class NotNullToBoolConverter : IValueConverter

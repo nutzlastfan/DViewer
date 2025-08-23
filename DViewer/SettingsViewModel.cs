@@ -20,6 +20,12 @@ namespace DViewer
         bool _localAcceptIncoming;
         bool _localUseTls;
 
+        bool _isNetworkTestBusy;
+        public bool IsNetworkTestBusy { get => _isNetworkTestBusy; set => Set(ref _isNetworkTestBusy, value); }
+
+
+
+
         public string LocalAeTitle { get => _localAeTitle; set => Set(ref _localAeTitle, value); }
         public string LocalPort { get => _localPort; set => Set(ref _localPort, value); }
         public string LocalStorageFolder { get => _localStorageFolder; set => Set(ref _localStorageFolder, value); }
@@ -42,8 +48,8 @@ namespace DViewer
         public async Task LoadAsync()
         {
             var store = AppSettingsStore.Instance;
-            await store.LoadAsync();                 // <-- Instanzmethode über Singleton
-            var model = store.Settings;              // aktuelle Settings
+            await store.LoadAsync();
+            var model = store.Settings;
 
             LocalAeTitle = model.LocalAeTitle ?? "DVIEWER";
             LocalPort = model.LocalPort.ToString();
@@ -61,7 +67,6 @@ namespace DViewer
         {
             var store = AppSettingsStore.Instance;
 
-            // Bequem: Änderungen anwenden und direkt persistieren
             await store.UpdateAsync(s =>
             {
                 s.LocalAeTitle = LocalAeTitle?.Trim() ?? "DVIEWER";
@@ -88,17 +93,23 @@ namespace DViewer
                 $"Aktueller Pfad:\n{LocalStorageFolder}\n\n(Anpassung per Code/Plattformdialog möglich)", "OK");
         }
 
+        // LOKALER SCP-PORT-TEST (Port frei/belegt)
         public async Task TestLocalScpAsync(Page page)
         {
-            await page.DisplayAlert("Test SCP",
-                $"AE: {LocalAeTitle}\nPort: {LocalPort}\nTLS: {(LocalUseTls ? "An" : "Aus")}\n\n(Implementiere hier echten Netzwerk-Test)",
-                "OK");
+            int port = TryParseInt(LocalPort, 104);
+            bool free = await DicomNetworkTester.IsTcpPortFreeAsync(port);
+
+            var msg = free
+                ? $"Port {port} ist FREI (kein SCP gebunden). Das ist gut, wenn du einen eigenen Listener starten willst."
+                : $"Port {port} ist BELEGT. Vermutlich läuft bereits ein SCP (oder ein anderes Programm) auf diesem Port.";
+
+            await page.DisplayAlert("Lokaler SCP-Port", msg, "OK");
         }
 
         // ---------- Node-Aktionen ----------
         public async Task AddNodeInteractiveAsync(Page page, NodeKind kind)
         {
-            var n = await PromptNodeAsync(page, new DicomNode(), "Neuer DICOM-Knoten");
+            var n = await PromptNodeAsync(page, new DicomNode { AeTitle = LocalAeTitle }, "Neuer DICOM-Knoten");
             if (n == null) return;
             Get(kind).Add(n);
             await SaveAsync();
@@ -141,13 +152,35 @@ namespace DViewer
             _ = SaveAsync();
         }
 
+        // NETZWERKTEST für den ausgewählten Knoten (Echo/MWL/QR) – VERKNÜPFT
         public async Task TestSelectedNodeAsync(Page page, NodeKind kind)
         {
             var sel = GetSelected(kind);
             if (sel == null) return;
-            await page.DisplayAlert("Test Knoten",
-                $"{sel.AeTitle} @ {sel.Host}:{sel.Port}\nCalled AE: {sel.CalledAe}\nTLS: {(sel.UseTls ? "An" : "Aus")}\n\n(Implementiere hier echten Echo/C-Echo Test)",
-                "OK");
+
+            IsNetworkTestBusy = true;                 // Spinner an
+            try
+            {
+                var tester = new DicomNetworkTester();
+                var callingAe = (LocalAeTitle ?? "DVIEWER").Trim();
+                const int timeout = 2000;             // 2 s wie gewünscht
+                DicomTestResult result = kind switch
+                {
+                    NodeKind.Send => await tester.TestEchoAsync(sel, callingAe, timeout),
+                    NodeKind.Worklist => await tester.TestWorklistAsync(sel, callingAe, timeout),
+                    NodeKind.QueryRetrieve => await tester.TestQueryRetrieveAsync(sel, callingAe, timeout),
+                    _ => new DicomTestResult { Success = false, Status = "N/A", Message = "Unbekannter Test." }
+                };
+
+                var icon = result.Success ? "✅" : "❌";
+                await page.DisplayAlert(
+                    "DICOM Netzwerktest",
+                    $"{icon} {sel.AeTitle} @ {sel.Host}:{sel.Port}\n" +
+                    $"Called AE: {sel.CalledAe}\nTLS: {(sel.UseTls ? "An" : "Aus")}\n\n" +
+                    $"Status: {result.Status}\nAntworten: {result.ResponsesSeen}\nZeit: {result.RoundtripMs} ms\n\n{result.Message}",
+                    "OK");
+            }
+            finally { IsNetworkTestBusy = false; }    // Spinner aus
         }
 
         // ---------- intern ----------
